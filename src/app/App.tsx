@@ -25,15 +25,16 @@ export function App() {
   const [strength, setStrength] = useState(defaults.brushStrength);
   const [persistence, setPersistence] = useState(1.2);
   const [dropSpacing, setDropSpacing] = useState(0.7);
+  const [boundaryResistance, setBoundaryResistance] = useState(defaults.boundaryResistance);
   const [tool, setTool] = useState<Tool>('drop');
   const [resolution, setResolution] = useState(() => new URLSearchParams(location.search).get('resolution') === '512' ? 512 : 1024);
   const [view, setView] = useState<{ zoom: number; pan: Point }>({ zoom: 1, pan: { x: 0, y: 0 } });
   const [status, setStatus] = useState<EngineStatus>(initialStatus);
   const [error, setError] = useState('');
   const [ready, setReady] = useState(false);
-  const [note, setNote] = useState('タップで一滴、なぞると指に沿って連続滴下。');
-  const settingsRef = useRef({ tool, color, radius, duration, brushRadius, strength, persistence, dropSpacing });
-  settingsRef.current = { tool, color, radius, duration, brushRadius, strength, persistence, dropSpacing };
+  const [note, setNote] = useState('タップで一滴、押し続けるとその場で広がります。なぞると連続滴下。');
+  const settingsRef = useRef({ tool, color, radius, duration, brushRadius, strength, persistence, dropSpacing, boundaryResistance });
+  settingsRef.current = { tool, color, radius, duration, brushRadius, strength, persistence, dropSpacing, boundaryResistance };
   const baseRef = useRef(base);
   baseRef.current = base;
   const busy = status.isAnimating || status.isStroking || status.contextLost || !ready;
@@ -143,7 +144,7 @@ export function App() {
           setTool(name);
           setNote(name === 'flow' ? '流体ペン：色の境界を横切るようにドラッグ。余韻で流れの続く時間を調整できます。'
             : name === 'stroke' ? '変形ペン：水面をつかんで長く引き延ばせます。半径と強度を調整してみてください。'
-            : name === 'drop' ? 'タップで一滴、なぞると指に沿って連続滴下します。' : 'ドラッグで移動、ホイール・ピンチで拡大縮小。');
+            : name === 'drop' ? 'タップで一滴。押し続けるとその場で広がり、なぞると連続滴下します。' : 'ドラッグで移動、ホイール・ピンチで拡大縮小。');
         }}><span>{['◉', '〰', '≈', '✥'][index]}</span>{toolNames[name]}</button>)}
         <div className="tool-note">色を落とす。<br />水面が動く。</div>
       </aside>
@@ -168,17 +169,18 @@ export function App() {
         {status.isFlowing && <button className="stop-flow" onClick={() => engineRef.current?.settleFlow()}>流れを止めて確定</button>}
         {error && <div role="alert" className="error">{error}</div>}
       </section>
-      <SettingsPanel {...{ color, base, radius, duration, brushRadius, strength, resolution, tool, persistence, setPersistence, dropSpacing, setDropSpacing, setColor, setBase, setRadius, setDuration, setBrushRadius, setStrength, clear }} disabled={busy}
+      <SettingsPanel {...{ color, base, radius, duration, brushRadius, strength, resolution, tool, persistence, setPersistence, dropSpacing, setDropSpacing, boundaryResistance, setBoundaryResistance, setColor, setBase, setRadius, setDuration, setBrushRadius, setStrength, clear }} disabled={busy}
         setResolution={(value) => {
           if (!confirm('解像度を変更すると、新しい水面になり作品と履歴が消えます。続けますか？')) return;
           setResolution(value);
           setNote(`${value}pxの新しい水面を作成しました。半径と座標は1024基準です。`);
         }} />
     </main>
-    <footer><span><span className="live-dot" />{status.contextLost ? '復帰待ち' : status.isFlowing ? '流体計算中' : status.isAnimating ? '広がり中' : status.isStroking ? '変形中' : 'READY'} {status.queuedDrops > 0 && `· 待機 ${status.queuedDrops}/10`}</span><span>{Math.round(view.zoom * 100)}% <i />{toolNames[tool]}<i />{status.operations} 操作 {import.meta.env.DEV && <><i />{status.fps || '—'} fps</>}</span><span>LOCAL ONLY · 独立したアートツール</span></footer>
+    <footer><span><span className="live-dot" />{status.contextLost ? '復帰待ち' : status.isPressing ? 'インク加圧中' : status.isFlowing ? '流体計算中' : status.isAnimating ? '広がり中' : status.isStroking ? '変形中' : 'READY'} {status.queuedDrops > 0 && `· 待機 ${status.queuedDrops}/10`}</span><span>{Math.round(view.zoom * 100)}% <i />{toolNames[tool]}<i />{status.operations} 操作 {import.meta.env.DEV && <><i />{status.fps || '—'} fps</>}</span><span>LOCAL ONLY · 独立したアートツール</span></footer>
     <dialog ref={helpRef} className="help-dialog">
       <h2>水面を、動かしてみる。</h2>
-      <p>滴下：クリック・タップでインクを投入。新しい円の外側では、背景を含む旧水面全体を逆写像で押し出します。</p>
+      <p>滴下：クリック・タップでインクを投入。押し続けると、その場で同じ色の滴がさらに広がります。新しい円の外側では、背景を含む旧水面全体を逆写像で押し出します。</p>
+      <p>境界の抵抗：別の色に近い辺だけ、広がりが局所的に遅くなります。相手の色も同じ変形を受けるため、境界が押し合うように見えます。色は混ざらず、面積の押し出しだけを変えます。</p>
       <p>連続滴下：滴下ツールでなぞると、指の軌跡に沿って一定間隔で滴を落とします。「連続滴下の間隔」で密度を調整。即時描画で指に追従し、軌跡全体がUndoの1操作になります。</p>
       <p>変形ペン：ドラッグで色の境界を引き延ばします。1本のドラッグが1操作。キャンセル時は元に戻ります。</p>
       <p>流体ペン：64×64の流速・圧力場を計算して水面全体を移流します。指を離した後の余韻も含めて1操作。流れが止まるとUndo・PNG保存が使えます。「流れを止めて確定」で途中停止できます。</p>

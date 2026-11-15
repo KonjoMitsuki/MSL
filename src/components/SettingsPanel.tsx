@@ -9,6 +9,7 @@ type Props = {
   clear: () => void; disabled: boolean;
   tool: Tool; persistence: number; setPersistence: (v: number) => void;
   dropSpacing: number; setDropSpacing: (v: number) => void;
+  boundaryResistance: number; setBoundaryResistance: (v: number) => void;
 };
 
 function Slider({ label, value, min, max, step = 1, unit, onChange }: {
@@ -27,8 +28,9 @@ export function SettingsPanel(p: Props) {
     <ColorInput label="インク色" value={p.color} onChange={p.setColor} />
     <ColorPalette color={p.color} onChange={p.setColor} />
     <Slider label="滴の半径" value={p.radius} min={4} max={180} unit="px" onChange={p.setRadius} />
+    <Slider label="境界の抵抗" value={p.boundaryResistance} min={0} max={1} step={0.05} unit="" onChange={p.setBoundaryResistance} />
     <Slider label="連続滴下の間隔" value={p.dropSpacing} min={0.3} max={2} step={0.1} unit="× 半径" onChange={p.setDropSpacing} />
-    <p className="setting-hint">タップで一滴、なぞると連続滴下。小さい半径で繊細な線に。連続滴下中は追従を優先して即時に広がります。</p>
+    <p className="setting-hint">タップで一滴、押し続けるとその場でさらに広がります。なぞると連続滴下。境界の抵抗を上げると、他の色に触れた辺だけ広がりが止まり、押し返します。</p>
     <Slider label="広がり時間" value={p.duration} min={0} max={1500} step={50} unit="ms" onChange={p.setDuration} />
     </>}
     {pen && <section className="pen-settings" aria-label="ペン設定">

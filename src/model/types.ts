@@ -6,6 +6,9 @@ export type DropOperation = {
   radius: number;
   color: string;
   durationMs: number;
+  // 0 keeps the pure Jaffer circle. Higher values let a nearby colour boundary
+  // resist the expanding front without mixing either pigment.
+  boundaryResistance?: number;
 };
 export type StrokeOperation = {
   type: 'stroke';
@@ -35,6 +38,7 @@ export type FlowOperation = {
 };
 export type TrailOperation = {
   type: 'trail'; id: string; points: Point[]; radius: number; color: string; spacing: number;
+  boundaryResistance?: number;
 };
 
 export type Tool = 'drop' | 'stroke' | 'flow' | 'pan';
@@ -48,4 +52,5 @@ export type EngineStatus = {
   isStroking: boolean;
   contextLost: boolean;
   isFlowing?: boolean;
+  isPressing?: boolean;
 };

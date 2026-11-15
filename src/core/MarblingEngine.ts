@@ -17,6 +17,11 @@ export class MarblingEngine {
   } | null = null;
   private flowFrame = 0;
   private trail: { operation: TrailOperation; snapshot: Uint8Array; sampler: StrokeSampler } | null = null;
+  private press: {
+    operation: DropOperation; baseRadius: number; currentRadius: number; started: number;
+    duration: number; maxRadius: number; releasing: boolean;
+  } | null = null;
+  private pressFrame = 0;
   private frame = 0;
   private frames = 0;
   private started = 0;
@@ -42,15 +47,15 @@ export class MarblingEngine {
 
   get status(): EngineStatus {
     return {
-      isAnimating: !!this.active, queuedDrops: this.queue.length, operations: this.history.count, fps: this.lastFps,
+      isAnimating: !!this.active || !!this.press, queuedDrops: this.queue.length, operations: this.history.count, fps: this.lastFps,
       canUndo: this.history.canUndo, canRedo: this.history.canRedo, isStroking: !!this.stroke || !!this.flowState || !!this.trail,
-      contextLost: this.lost, isFlowing: !!this.flowState,
+      contextLost: this.lost, isFlowing: !!this.flowState, isPressing: !!this.press,
     };
   }
 
   enqueue(operation: DropOperation): boolean {
     if (this.flowState?.released) this.settleFlow();
-    if (this.lost || this.disposed || this.stroke || this.flowState || this.trail || (this.active && this.queue.length >= 10)) return false;
+    if (this.lost || this.disposed || this.stroke || this.flowState || this.trail || this.press || (this.active && this.queue.length >= 10)) return false;
     const { x, y } = operation.center;
     if (![x, y, operation.radius, operation.durationMs].every(Number.isFinite) ||
         x < 0 || x > 1024 || y < 0 || y > 1024 || operation.radius < 4 || operation.radius > 180 ||
@@ -71,6 +76,7 @@ export class MarblingEngine {
     }
     this.started = performance.now();
     this.frames = 0;
+    this.renderer.prepareDrop(this.active.center);
     if (this.active.durationMs === 0) this.tick(this.started);
     else this.frame = requestAnimationFrame(this.tick);
   }
@@ -97,9 +103,106 @@ export class MarblingEngine {
     }
   };
 
+  // Press-and-hold growth. The fixed pre-drop surface is reused every frame, so
+  // holding only changes the radius; releasing commits one ordinary DropOperation.
+  beginPressDrop(
+    center: Point, radius: number, color: string, durationMs: number,
+    boundaryResistance = 0, maxRadius = 180,
+  ): boolean {
+    if (this.flowState?.released) this.settleFlow();
+    if (this.lost || this.disposed || this.active || this.stroke || this.flowState || this.trail || this.press) return false;
+    const resistance = Math.max(0, Math.min(1, boundaryResistance));
+    if (![center.x, center.y, radius, durationMs, resistance, maxRadius].every(Number.isFinite) ||
+        center.x < 0 || center.x > 1024 || center.y < 0 || center.y > 1024 ||
+        radius < 4 || radius > 180 || durationMs < 0 || durationMs > 1500) return false;
+    rgb(color);
+    this.press = {
+      operation: {
+        type: 'drop', id: crypto.randomUUID(), center: { ...center }, radius, color,
+        durationMs: 0, boundaryResistance: resistance,
+      },
+      baseRadius: radius, currentRadius: 0, started: performance.now(), duration: durationMs,
+      maxRadius: Math.max(radius, Math.min(180, maxRadius)), releasing: false,
+    };
+    this.renderer.prepareDrop(center);
+    this.renderer.drop(this.press.operation, 0);
+    this.renderer.display();
+    this.pressTick(performance.now());
+    this.emit();
+    return true;
+  }
+
+  private pressTick = (now: number) => {
+    const press = this.press;
+    if (!press) return;
+    try {
+      const elapsed = Math.max(0, now - press.started);
+      const growth = Math.max(18, press.baseRadius * 0.8);
+      let radius: number;
+      if (press.duration === 0) radius = Math.min(press.maxRadius, press.baseRadius + elapsed / 1000 * growth);
+      else if (elapsed <= press.duration) radius = spreadRadius(press.baseRadius, elapsed / press.duration);
+      else {
+        // After reaching the chosen size, continued pressure keeps feeding the
+        // same pigment. The extra radius is still the exact Jaffer displacement.
+        const extra = (elapsed - press.duration) / 1000;
+        radius = Math.min(press.maxRadius, press.baseRadius + extra * growth);
+      }
+      press.currentRadius = radius;
+      this.renderer.drop(press.operation, radius);
+      this.renderer.display();
+      this.renderer.checkError();
+      if (press.releasing && radius >= press.baseRadius - 1e-6) { this.commitPress(); return; }
+      if (!press.releasing && radius >= press.maxRadius - 1e-6) return;
+      this.pressFrame = requestAnimationFrame(this.pressTick);
+    } catch (error) {
+      this.cancelPressDrop();
+      this.onError(String(error));
+    }
+  };
+
+  releasePressDrop() {
+    const press = this.press;
+    if (!press) return;
+    if (press.duration === 0 || press.currentRadius >= press.baseRadius - 1e-6) {
+      this.commitPress();
+      return;
+    }
+    // A short tap still reaches the size chosen in the panel. It simply finishes
+    // the same fixed-snapshot animation after the finger leaves.
+    press.releasing = true;
+  }
+
+  private commitPress() {
+    const press = this.press;
+    if (!press) return;
+    cancelAnimationFrame(this.pressFrame);
+    if (press.duration === 0 && press.currentRadius < 4) press.currentRadius = press.baseRadius;
+    const radius = Math.max(4, Math.min(180, press.currentRadius));
+    press.operation.radius = radius;
+    press.operation.durationMs = 0;
+    this.press = null;
+    this.renderer.drop(press.operation, radius);
+    this.renderer.commit();
+    this.record(press.operation);
+    this.renderer.display();
+    this.renderer.checkError();
+    this.emit();
+    for (const resolve of this.waiters.splice(0)) resolve();
+  }
+
+  cancelPressDrop() {
+    const press = this.press;
+    if (!press) return;
+    cancelAnimationFrame(this.pressFrame);
+    this.press = null;
+    if (!this.lost) { this.renderer.discardPreview(); this.renderer.display(); }
+    this.emit();
+    for (const resolve of this.waiters.splice(0)) resolve();
+  }
+
   private apply(operation: Operation) {
     if (operation.type === 'clear') this.renderer.clear(operation.baseColor);
-    if (operation.type === 'drop') { this.renderer.drop(operation); this.renderer.commit(); }
+    if (operation.type === 'drop') { this.renderer.prepareDrop(operation.center); this.renderer.drop(operation); this.renderer.commit(); }
     if (operation.type === 'trail') {
       for (const center of operation.points) this.applyTrailDrop(operation, center);
     }
@@ -150,7 +253,7 @@ export class MarblingEngine {
 
   beginStroke(point: Point, radius: number, strength: number): boolean {
     if (this.flowState?.released) this.settleFlow();
-    if (this.lost || this.active || this.stroke || this.flowState || this.trail || this.disposed) return false;
+    if (this.lost || this.active || this.stroke || this.flowState || this.trail || this.press || this.disposed) return false;
     const spacing = Math.min(radius / 3, 2 * 1024 / this.resolution / strength);
     this.stroke = {
       operation: { type: 'stroke', id: crypto.randomUUID(), points: [{ ...point }], radius, strength },
@@ -192,13 +295,13 @@ export class MarblingEngine {
   }
 
   undo() {
-    if (this.active || this.stroke || this.flowState || this.trail || this.lost || !this.history.canUndo) return;
+    if (this.active || this.stroke || this.flowState || this.trail || this.press || this.lost || !this.history.canUndo) return;
     this.history.undo();
     this.replay();
   }
 
   redo() {
-    if (this.active || this.stroke || this.flowState || this.trail || this.lost || !this.history.canRedo) return;
+    if (this.active || this.stroke || this.flowState || this.trail || this.press || this.lost || !this.history.canRedo) return;
     this.history.redo();
     this.replay();
   }
@@ -214,12 +317,12 @@ export class MarblingEngine {
   private emit() { this.onChange(this.status); }
 
   whenIdle(): Promise<void> {
-    return this.active || this.flowState ? new Promise((resolve) => this.waiters.push(resolve)) : Promise.resolve();
+    return this.active || this.flowState || this.press ? new Promise((resolve) => this.waiters.push(resolve)) : Promise.resolve();
   }
 
   beginFlow(point: Point, radius: number, strength: number, persistence = 1.2): boolean {
     if (this.flowState?.released) this.settleFlow();
-    if (this.lost || this.disposed || this.active || this.stroke || this.flowState || this.trail) return false;
+    if (this.lost || this.disposed || this.active || this.stroke || this.flowState || this.trail || this.press) return false;
     if (![point.x, point.y, radius, strength, persistence].every(Number.isFinite) ||
         radius < 2 || radius > 240 || strength <= 0 || strength > 3 || persistence < 0.2 || persistence > 2) return false;
     this.flowState = {
@@ -308,11 +411,12 @@ export class MarblingEngine {
     }
   };
 
-  beginTrail(point: Point, radius: number, color: string, spacingRatio = 0.7): boolean {
+  beginTrail(point: Point, radius: number, color: string, spacingRatio = 0.7, boundaryResistance = 0): boolean {
     if (this.flowState?.released) this.settleFlow();
-    if (this.lost || this.disposed || this.stroke || this.flowState || this.trail) return false;
-    if (![point.x, point.y, radius, spacingRatio].every(Number.isFinite) ||
-        radius < 4 || radius > 180 || spacingRatio < 0.3 || spacingRatio > 2) return false;
+    if (this.lost || this.disposed || this.stroke || this.flowState || this.trail || this.press) return false;
+    if (![point.x, point.y, radius, spacingRatio, boundaryResistance].every(Number.isFinite) ||
+        radius < 4 || radius > 180 || spacingRatio < 0.3 || spacingRatio > 2 ||
+        boundaryResistance < 0 || boundaryResistance > 1) return false;
     rgb(color);
     // Finish any preceding taps at their exact final radius before starting the
     // live trail. Continuous drops then commit immediately, without a lagging queue.
@@ -321,12 +425,18 @@ export class MarblingEngine {
       const waiting = [this.active, ...this.queue];
       this.active = null;
       this.queue = [];
-      for (const op of waiting) { this.renderer.drop(op); this.renderer.commit(); this.record(op); }
+      for (const op of waiting) {
+        this.renderer.prepareDrop(op.center);
+        this.renderer.drop(op); this.renderer.commit(); this.record(op);
+      }
       for (const resolve of this.waiters.splice(0)) resolve();
     }
     const spacing = Math.max(8, radius * spacingRatio);
     this.trail = {
-      operation: { type: 'trail', id: crypto.randomUUID(), points: [{ ...point }], radius, color, spacing },
+      operation: {
+        type: 'trail', id: crypto.randomUUID(), points: [{ ...point }], radius, color, spacing,
+        boundaryResistance: Math.max(0, Math.min(1, boundaryResistance)),
+      },
       snapshot: this.renderer.pixels(), sampler: new StrokeSampler(point, spacing),
     };
     this.applyTrailDrop(this.trail.operation, point);
@@ -336,7 +446,11 @@ export class MarblingEngine {
   }
 
   private applyTrailDrop(op: TrailOperation, center: Point) {
-    this.renderer.drop({ type: 'drop', id: op.id, center, radius: op.radius, color: op.color, durationMs: 0 });
+    this.renderer.prepareDrop(center);
+    this.renderer.drop({
+      type: 'drop', id: op.id, center, radius: op.radius, color: op.color, durationMs: 0,
+      boundaryResistance: op.boundaryResistance ?? 0,
+    });
     this.renderer.commit();
   }
 
@@ -365,6 +479,7 @@ export class MarblingEngine {
     cancelAnimationFrame(this.frame);
     this.active = null;
     this.queue = [];
+    this.cancelPressDrop();
     this.endFlow(true);
     this.endTrail(true);
     this.endStroke(true);

@@ -90,8 +90,8 @@ test('fluid inertia, exact history, cancellation, bounded resources and context 
   expect(result.count).toBe(3);
   expect(result.undo && result.redo && result.cancelled).toBe(true);
   expect(result.colors).toEqual(['105,41,232', '240,32,69', '39,139,236']);
-  expect(result.textures).toBe(6);
-  expect(result.afterTextures).toBe(6);
+  expect(result.textures).toBe(7);
+  expect(result.afterTextures).toBe(7);
   expect(result.error).toBe(0);
   await page.getByRole('button', { name: '流体ペン', exact: false }).click();
   await page.screenshot({ path: 'docs/fluid-demo.png', fullPage: true });

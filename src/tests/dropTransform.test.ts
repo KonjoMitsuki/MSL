@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { inverseDrop, spreadRadius } from '../core/DropTransform';
+import { boundaryRadiusScale, inverseDrop, spreadRadius } from '../core/DropTransform';
 
 describe('Jaffer area-preserving drop', () => {
   it('inverts the 60/80/100 radius relation (AT-02)', () => {
@@ -26,5 +26,14 @@ describe('Jaffer area-preserving drop', () => {
     expect(spreadRadius(130, 0)).toBe(0);
     expect(spreadRadius(130, 1)).toBe(130);
     expect(spreadRadius(130, 2)).toBe(130);
+  });
+  it('slows only near a foreign boundary and preserves the no-resistance circle', () => {
+    expect(boundaryRadiusScale(80, 1024, 1)).toBe(1);
+    expect(boundaryRadiusScale(80, 300, 1)).toBe(1);
+    expect(boundaryRadiusScale(80, 60, 0)).toBe(1);
+    const contact = boundaryRadiusScale(80, 80, 1);
+    expect(contact).toBeCloseTo(1 - 0.45, 6);
+    expect(boundaryRadiusScale(80, 80, 1)).toBeLessThan(boundaryRadiusScale(80, 100, 1));
+    expect(boundaryRadiusScale(80, 60, 0.5)).toBeGreaterThan(boundaryRadiusScale(80, 60, 1));
   });
 });

@@ -1,7 +1,7 @@
 import type { MarblingEngine } from '../core/MarblingEngine';
 import type { Point, Tool } from '../model/types';
 
-type Settings = { tool: Tool; color: string; radius: number; duration: number; brushRadius: number; strength: number; persistence: number; dropSpacing: number };
+type Settings = { tool: Tool; color: string; radius: number; duration: number; brushRadius: number; strength: number; persistence: number; dropSpacing: number; boundaryResistance: number };
 type View = { zoom: number; pan: Point };
 
 export function toSurface(client: Point, rect: Pick<DOMRect, 'left' | 'top' | 'width' | 'height'>, view: View): Point {
@@ -21,7 +21,7 @@ export function attachPointerController(
   const pointers = new Map<number, Point>();
   let space = false;
   let mode: 'none' | 'drop' | 'trail' | 'stroke' | 'flow' | 'pan' | 'pinch' = 'none';
-  let pending: { point: Point; start: Point; settings: Settings } | null = null;
+  let pending: { point: Point; start: Point; settings: Settings; pressStarted: boolean } | null = null;
   let last: Point = { x: 0, y: 0 };
   let pinch: { distance: number; midpoint: Point; view: View } | null = null;
   const view = (): View => ({ zoom: engine.renderer.zoom, pan: { ...engine.renderer.pan } });
@@ -34,7 +34,10 @@ export function attachPointerController(
     onView(view());
   };
   const drop = (p: Point, s: Settings) => {
-    const accepted = engine.enqueue({ type: 'drop', id: crypto.randomUUID(), center: p, radius: s.radius, color: s.color, durationMs: s.duration });
+    const accepted = engine.enqueue({
+      type: 'drop', id: crypto.randomUUID(), center: p, radius: s.radius, color: s.color,
+      durationMs: s.duration, boundaryResistance: s.boundaryResistance,
+    });
     onNote(accepted ? '新しいインクが、背景を含むすべての色を押し広げます。' : '入力待機中です。滴下キューは最大10件です。');
   };
   const pinchMetrics = () => {
@@ -49,6 +52,7 @@ export function attachPointerController(
     pointers.set(event.pointerId, point(event));
     if (pointers.size >= 2) {
       pending = null;
+      engine.cancelPressDrop();
       engine.endStroke(true);
       engine.endFlow(true);
       engine.endTrail(true);
@@ -69,7 +73,12 @@ export function attachPointerController(
       if (mode === 'none') onNote('滴下が完了してから変形ペンを使えます。');
     } else {
       mode = 'drop';
-      pending = { point: p, start: last, settings: { ...s } };
+      pending = { point: p, start: last, settings: { ...s }, pressStarted: false };
+      const started = engine.beginPressDrop(p, s.radius, s.color, s.duration, s.boundaryResistance);
+      pending.pressStarted = started;
+      onNote(started
+        ? '押し続けると、その場でインクがさらに広がります。離すと確定。'
+        : '現在の操作が完了してから滴下できます。');
     }
   };
   const move = (event: PointerEvent) => {
@@ -93,7 +102,8 @@ export function attachPointerController(
       if (mode === 'drop' && pending) {
         if (Math.hypot(event.clientX - pending.start.x, event.clientY - pending.start.y) <= 5) return;
         const s = pending.settings;
-        const started = engine.beginTrail(pending.point, s.radius, s.color, s.dropSpacing);
+        if (pending.pressStarted) engine.cancelPressDrop();
+        const started = engine.beginTrail(pending.point, s.radius, s.color, s.dropSpacing, s.boundaryResistance);
         pending = null;
         mode = started ? 'trail' : 'none';
         if (!started) { onNote('現在の操作が完了してから連続滴下できます。'); return; }
@@ -116,7 +126,8 @@ export function attachPointerController(
     if (mode === 'flow') { move(event); engine.endFlow(); }
     if (mode === 'trail') { move(event); engine.endTrail(); }
     if (mode === 'drop' && pending) {
-      if (Math.hypot(event.clientX - pending.start.x, event.clientY - pending.start.y) <= 8) drop(pending.point, pending.settings);
+      if (pending.pressStarted) engine.releasePressDrop();
+      else if (Math.hypot(event.clientX - pending.start.x, event.clientY - pending.start.y) <= 8) drop(pending.point, pending.settings);
     }
     pending = null;
     pointers.delete(event.pointerId);
@@ -125,6 +136,7 @@ export function attachPointerController(
     if (pointers.size === 0) { mode = 'none'; pinch = null; }
   };
   const cancel = () => {
+    engine.cancelPressDrop();
     engine.endStroke(true);
     engine.endFlow(true);
     engine.endTrail(true);

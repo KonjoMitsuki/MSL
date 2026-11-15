@@ -1,29 +1,29 @@
 {
-  "measuredAt": "2026-11-15T13:29:10.129Z",
+  "measuredAt": "2026-11-15T13:49:13.025Z",
   "environment": "Linux, Chromium, software WebGL2 / SwiftShader; not a physical-device benchmark",
   "resolution": 1024,
   "count": 100,
   "retained": 50,
   "memory": 20971520,
   "batchMs": [
-    130.70000000018626,
-    140.6999999997206,
-    416,
-    542.3000000002794,
-    528.6999999997206
+    194.70000000018626,
+    214.09999999962747,
+    531.2000000001863,
+    717.3999999994412,
+    713.7000000001863
   ],
   "previewFps": 62,
   "undoToBaseline": true,
   "redoExact": true,
   "before": {
-    "live": 2,
-    "created": 4,
-    "deleted": 2
+    "live": 3,
+    "created": 6,
+    "deleted": 3
   },
   "after": {
-    "live": 2,
-    "created": 4,
-    "deleted": 2
+    "live": 3,
+    "created": 6,
+    "deleted": 3
   },
   "error": 0,
   "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/159.0.8154.6 Safari/537.36"

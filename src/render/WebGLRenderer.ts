@@ -3,6 +3,7 @@ import dropSource from './shaders/drop.frag.glsl?raw';
 import displaySource from './shaders/display.frag.glsl?raw';
 import transportSource from './shaders/transport.frag.glsl?raw';
 import resolveSource from './shaders/resolve.frag.glsl?raw';
+import profileSource from './shaders/profile.frag.glsl?raw';
 import { rgb } from '../core/DropTransform';
 import type { DropOperation, Point } from '../model/types';
 
@@ -18,6 +19,9 @@ export class WebGLRenderer {
   private displayProgram: WebGLProgram;
   private strokeProgram: WebGLProgram;
   private resolveProgram: WebGLProgram;
+  private profileProgram: WebGLProgram;
+  private profileTexture: WebGLTexture | null = null;
+  private profileFramebuffer: WebGLFramebuffer | null = null;
   private mapIndex = 3;
   private transporting = false;
   private transportDirty = false;
@@ -44,7 +48,9 @@ export class WebGLRenderer {
       this.displayProgram = this.program(displaySource);
       this.strokeProgram = this.program(transportSource);
       this.resolveProgram = this.program(resolveSource);
+      this.profileProgram = this.program(profileSource);
       for (let i = 0; i < 2; i++) this.createSurface();
+      this.createProfileSurface();
       this.checkError();
     } catch (error) {
       this.dispose();
@@ -73,6 +79,31 @@ export class WebGLRenderer {
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
     if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
       throw new Error('水面テクスチャを作成できません。512pxモードをお試しください。');
+    }
+  }
+
+  private createProfileSurface() {
+    const gl = this.gl;
+    const texture = gl.createTexture();
+    const framebuffer = gl.createFramebuffer();
+    if (!texture || !framebuffer) {
+      gl.deleteTexture(texture);
+      gl.deleteFramebuffer(framebuffer);
+      throw new Error('GPUメモリを確保できません。512pxモードをお試しください。');
+    }
+    this.profileTexture = texture;
+    this.profileFramebuffer = framebuffer;
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, 128, 1);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
+      throw new Error('境界プロファイルを作成できません。512pxモードをお試しください。');
     }
   }
 
@@ -123,6 +154,24 @@ export class WebGLRenderer {
     this.display();
   }
 
+  // Sample 128 rays once from the fixed pre-drop surface. The drop shader then
+  // reads this tiny texture while the radius animates, with no CPU readback.
+  prepareDrop(center: Point) {
+    const gl = this.gl;
+    gl.bindVertexArray(this.vao);
+    gl.useProgram(this.profileProgram);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.profileFramebuffer);
+    gl.viewport(0, 0, 128, 1);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.surfaces[this.current].texture);
+    gl.uniform1i(gl.getUniformLocation(this.profileProgram, 'uSurface'), 0);
+    gl.uniform2f(gl.getUniformLocation(this.profileProgram, 'uCenter'), center.x, center.y);
+    gl.uniform1f(gl.getUniformLocation(this.profileProgram, 'uStep'), 2);
+    gl.uniform1i(gl.getUniformLocation(this.profileProgram, 'uSteps'), 512);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+
   // current is a fixed pre-drop snapshot. Every preview overwrites ONLY the other surface.
   drop(operation: DropOperation, radius = operation.radius) {
     const gl = this.gl;
@@ -130,6 +179,11 @@ export class WebGLRenderer {
     gl.uniform2f(gl.getUniformLocation(this.dropProgram, 'uCenter'), operation.center.x, operation.center.y);
     gl.uniform1f(gl.getUniformLocation(this.dropProgram, 'uRadius'), radius);
     gl.uniform3f(gl.getUniformLocation(this.dropProgram, 'uColor'), ...rgb(operation.color));
+    gl.uniform1f(gl.getUniformLocation(this.dropProgram, 'uResistance'), Math.max(0, Math.min(1, operation.boundaryResistance ?? 0)));
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.profileTexture);
+    gl.uniform1i(gl.getUniformLocation(this.dropProgram, 'uProfile'), 1);
+    gl.activeTexture(gl.TEXTURE0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     this.preview = true;
   }
@@ -264,11 +318,15 @@ export class WebGLRenderer {
     if (error !== this.gl.NO_ERROR) throw new Error(`WebGLエラー (${error})。512pxモードで再読み込みしてください。`);
   }
 
-  get textureCount() { return this.surfaces.length + (this.velocityTexture ? 1 : 0); }
+  get textureCount() { return this.surfaces.length + (this.velocityTexture ? 1 : 0) + 1; }
 
   dispose() {
     this.gl.deleteTexture(this.velocityTexture);
     this.velocityTexture = null;
+    this.gl.deleteFramebuffer(this.profileFramebuffer);
+    this.gl.deleteTexture(this.profileTexture);
+    this.profileFramebuffer = null;
+    this.profileTexture = null;
     for (const surface of this.surfaces) {
       this.gl.deleteFramebuffer(surface.framebuffer);
       this.gl.deleteTexture(surface.texture);
