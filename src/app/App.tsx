@@ -4,7 +4,9 @@ import { BLUE, defaults, demoDrops, RED } from '../model/defaults';
 import type { EngineStatus, Point, Tool } from '../model/types';
 import { attachPointerController } from '../input/pointerController';
 import { SettingsPanel } from '../components/SettingsPanel';
-import { downloadPng, exportPng } from '../export/exportPng';
+import { CropOverlay } from '../components/CropOverlay';
+import { aspectRatio, clampCrop, CROP_ASPECTS, cropOutputHeight, withAspect, type CropAspect, type CropRect } from '../export/crop';
+import { downloadPng, exportCropPng, exportPng } from '../export/exportPng';
 import { version } from '../../package.json';
 
 declare global { interface Window { __lab?: MarblingEngine } }
@@ -33,6 +35,14 @@ export function App() {
   const [error, setError] = useState('');
   const [ready, setReady] = useState(false);
   const [note, setNote] = useState('タップで一滴、押し続けるとその場で広がります。なぞると連続滴下。');
+  const [cropMode, setCropMode] = useState(false);
+  const cropModeRef = useRef(false);
+  cropModeRef.current = cropMode;
+  const [crop, setCrop] = useState<CropRect>({ x: 128, y: 128, width: 768, height: 768 });
+  const [cropAspect, setCropAspect] = useState<CropAspect>('1:1');
+  const [cropOutputWidth, setCropOutputWidth] = useState(1024);
+  const outputWidth = Math.max(64, Math.min(2048, Math.round(cropOutputWidth || 1024)));
+  const outputHeight = cropOutputHeight(crop, outputWidth, aspectRatio(cropAspect));
   const settingsRef = useRef({ tool, color, radius, duration, brushRadius, strength, persistence, dropSpacing, boundaryResistance });
   settingsRef.current = { tool, color, radius, duration, brushRadius, strength, persistence, dropSpacing, boundaryResistance };
   const baseRef = useRef(base);
@@ -57,7 +67,7 @@ export function App() {
       setError(String(err));
       return;
     }
-    const detach = attachPointerController(canvas, engine, () => settingsRef.current, setView, setNote);
+    const detach = attachPointerController(canvas, engine, () => settingsRef.current, setView, setNote, () => cropModeRef.current);
     const resize = new ResizeObserver(([entry]) => {
       if (engine.status.contextLost) return;
       const size = Math.max(1, Math.round(entry.contentRect.width * Math.min(devicePixelRatio, 2)));
@@ -126,6 +136,46 @@ export function App() {
     } catch (err) { setError(String(err)); }
   }
 
+  function toggleCrop() {
+    if (busy) return;
+    if (cropMode) {
+      setCropMode(false);
+      setNote('切り抜きを終了しました。水面の編集に戻れます。');
+      return;
+    }
+    fit();
+    setCrop((current) => withAspect(current, aspectRatio(cropAspect)));
+    setCropMode(true);
+    setNote('枠をドラッグして移動、四隅でリサイズ。比率と出力サイズを選んで書き出せます。');
+  }
+
+  function changeAspect(next: CropAspect) {
+    setCropAspect(next);
+    const ratio = aspectRatio(next);
+    if (ratio) setCrop((current) => withAspect(current, ratio));
+  }
+
+  function setCropField(key: keyof CropRect, value: number) {
+    setCrop((current) => {
+      const ratio = aspectRatio(cropAspect);
+      if (ratio && (key === 'width' || key === 'height')) {
+        const width = key === 'width' ? value : value * ratio;
+        const height = key === 'width' ? value / ratio : value;
+        return clampCrop({ ...current, width, height });
+      }
+      return clampCrop({ ...current, [key]: value });
+    });
+  }
+
+  async function saveCrop() {
+    const engine = engineRef.current;
+    if (!engine || busy) return;
+    try {
+      downloadPng(await exportCropPng(engine.renderer.pixels(), resolution, crop, outputWidth, outputHeight), 'marbling-crop');
+      setNote(`${outputWidth} × ${outputHeight}px の切り抜きPNGを書き出しました。選択範囲だけを元の色で出力します。`);
+    } catch (err) { setError(String(err)); }
+  }
+
   return <div className="app">
     <header className="topbar">
       <div className="brand"><span className="brand-mark">◉</span><div><h1>Marbling Surface Lab</h1><span className="eyebrow">色流しの実験室 / v{version}</span></div></div>
@@ -134,6 +184,7 @@ export function App() {
         <button aria-label="Redo" title="Redo · Ctrl / Cmd + Shift + Z" disabled={busy || !status.canRedo} onClick={() => engineRef.current?.redo()}>↷ <span>Redo</span></button>
         <button disabled={busy} onClick={clear}>全消去</button>
         <button disabled={busy} onClick={save}>PNG保存</button>
+        <button aria-pressed={cropMode} disabled={busy} onClick={toggleCrop}>{cropMode ? '切り抜き終了' : '切り抜き'}</button>
         <button aria-label="簡易ヘルプ" onClick={() => helpRef.current?.showModal()}>?</button>
       </nav>
       <button className="primary" disabled={busy} onClick={demo}>▶ AT-03 デモを再生</button>
@@ -150,11 +201,11 @@ export function App() {
       </aside>
       <section className="surface-area" aria-label="水面">
         <div className="surface-heading"><span>01 / SURFACE</span><span>{resolution} × {resolution} · WebGL2</span></div>
-        <div className={`canvas-frame tool-${tool}`}>
+        <div className={`canvas-frame tool-${tool} ${cropMode ? 'tool-crop' : ''}`}>
           <canvas ref={canvasRef} tabIndex={0} aria-label="マーブリング水面"
             onPointerMove={(event) => {
               const cursor = cursorRef.current!;
-              if (tool === 'pan') { cursor.style.display = 'none'; return; }
+              if (cropMode || tool === 'pan') { cursor.style.display = 'none'; return; }
               const rect = event.currentTarget.getBoundingClientRect();
               const diameter = 2 * (tool === 'drop' ? radius : brushRadius) * view.zoom * rect.width / 1024;
               Object.assign(cursor.style, { display: 'block', width: `${diameter}px`, height: `${diameter}px`,
@@ -163,8 +214,33 @@ export function App() {
             onPointerLeave={() => { if (cursorRef.current) cursorRef.current.style.display = 'none'; }}
             onPointerUp={(event) => { if (event.pointerType !== 'mouse' && cursorRef.current) cursorRef.current.style.display = 'none'; }} />
           <div ref={cursorRef} className="brush-cursor" aria-hidden="true" />
+          {cropMode && !status.contextLost && <CropOverlay crop={crop} aspect={cropAspect} onChange={setCrop} />}
         </div>
-        <div className="view-controls"><button aria-label="縮小" disabled={!ready || status.contextLost} onClick={() => zoomBy(0.8)}>−</button><button aria-label="表示をフィット" disabled={!ready || status.contextLost} onClick={fit}>{Math.round(view.zoom * 100)}% · FIT</button><button aria-label="拡大" disabled={!ready || status.contextLost} onClick={() => zoomBy(1.25)}>＋</button><span>ホイール / ピンチで拡大</span></div>
+        {cropMode && <div className="crop-toolbar" role="region" aria-label="切り抜き設定">
+          <div className="crop-ratios"><span className="eyebrow">RATIO</span>
+            {CROP_ASPECTS.map((item) => <button key={item.id} className={cropAspect === item.id ? 'selected' : ''}
+              aria-pressed={cropAspect === item.id} onClick={() => changeAspect(item.id)}>{item.label}</button>)}
+          </div>
+          <div className="crop-fields">
+            {(['x', 'y', 'width', 'height'] as const).map((key) => <label key={key} className="crop-field">
+              <span>{key === 'x' ? 'X' : key === 'y' ? 'Y' : key === 'width' ? '幅' : '高さ'}</span>
+              <input type="number" min={0} max={1024} step={1} value={Math.round(crop[key])}
+                aria-label={`切り抜き${key === 'x' ? 'X' : key === 'y' ? 'Y' : key === 'width' ? '幅' : '高さ'}`}
+                onChange={(event) => setCropField(key, Number(event.target.value))} />
+            </label>)}
+            <label className="crop-field"><span>出力幅</span>
+              <input type="number" min={64} max={2048} step={32} value={cropOutputWidth}
+                aria-label="出力幅" onChange={(event) => setCropOutputWidth(Number(event.target.value))} />
+              <em>px</em>
+            </label>
+            <span className="crop-output">{outputWidth} × {outputHeight}px</span>
+          </div>
+          <div className="crop-actions">
+            <button className="primary" onClick={saveCrop}>切り抜きPNG</button>
+            <button onClick={toggleCrop}>閉じる</button>
+          </div>
+        </div>}
+        <div className="view-controls"><button aria-label="縮小" disabled={!ready || status.contextLost || cropMode} onClick={() => zoomBy(0.8)}>−</button><button aria-label="表示をフィット" disabled={!ready || status.contextLost || cropMode} onClick={fit}>{Math.round(view.zoom * 100)}% · FIT</button><button aria-label="拡大" disabled={!ready || status.contextLost || cropMode} onClick={() => zoomBy(1.25)}>＋</button><span>ホイール / ピンチで拡大</span></div>
         <p className="surface-caption" aria-live="polite"><span className="live-dot" />{note}</p>
         {status.isFlowing && <button className="stop-flow" onClick={() => engineRef.current?.settleFlow()}>流れを止めて確定</button>}
         {error && <div role="alert" className="error">{error}</div>}
@@ -188,6 +264,7 @@ export function App() {
       <p>移動：移動ツールまたはSpace＋ドラッグ。ホイール・2本指ピンチで拡大縮小します。</p>
       <p>Undo：Ctrl / Cmd＋Z。Redo：Ctrl / Cmd＋Shift＋Z。最大50操作。全消去もUndoできます。</p>
       <p>AT-03：青背景に紫130px、赤80pxを順に投入。赤と紫の間に残る青と、紫の変形を観察してください。</p>
+      <p>切り抜き：上部の「切り抜き」で範囲を表示。枠内をドラッグして移動、四隅でリサイズ。自由・1:1・4:3・3:4・16:9・9:16の比率を選び、出力幅を指定してPNG保存します。数値でも範囲を指定できます。</p>
       <p>作品は自動保存されません。PNG保存で水面だけを書き出せます。DWSの公式・提携サービスではありません。</p>
       <form method="dialog"><button className="primary">閉じる</button></form>
     </dialog>

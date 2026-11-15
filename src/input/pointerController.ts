@@ -17,6 +17,7 @@ export function attachPointerController(
   settings: () => Settings,
   onView: (view: View) => void,
   onNote: (message: string) => void,
+  locked: () => boolean = () => false,
 ) {
   const pointers = new Map<number, Point>();
   let space = false;
@@ -45,6 +46,7 @@ export function attachPointerController(
     return { distance: Math.max(1, Math.hypot(b.x - a.x, b.y - a.y)), midpoint: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } };
   };
   const down = (event: PointerEvent) => {
+    if (locked()) return;
     if (event.button !== 0 || engine.status.contextLost) return;
     event.preventDefault();
     canvas.focus({ preventScroll: true });
@@ -146,6 +148,7 @@ export function attachPointerController(
     pinch = null;
   };
   const wheel = (event: WheelEvent) => {
+    if (locked()) return;
     event.preventDefault();
     const rect = canvas.getBoundingClientRect(), v = view();
     const zoom = Math.max(0.5, Math.min(4, v.zoom * Math.exp(-event.deltaY * 0.001)));
