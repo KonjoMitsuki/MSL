@@ -1,7 +1,7 @@
 import type { MarblingEngine } from '../core/MarblingEngine';
 import type { Point, Tool } from '../model/types';
 
-type Settings = { tool: Tool; color: string; radius: number; duration: number; brushRadius: number; strength: number };
+type Settings = { tool: Tool; color: string; radius: number; duration: number; brushRadius: number; strength: number; persistence: number; dropSpacing: number };
 type View = { zoom: number; pan: Point };
 
 export function toSurface(client: Point, rect: Pick<DOMRect, 'left' | 'top' | 'width' | 'height'>, view: View): Point {
@@ -20,7 +20,7 @@ export function attachPointerController(
 ) {
   const pointers = new Map<number, Point>();
   let space = false;
-  let mode: 'none' | 'drop' | 'stroke' | 'pan' | 'pinch' = 'none';
+  let mode: 'none' | 'drop' | 'trail' | 'stroke' | 'flow' | 'pan' | 'pinch' = 'none';
   let pending: { point: Point; start: Point; settings: Settings } | null = null;
   let last: Point = { x: 0, y: 0 };
   let pinch: { distance: number; midpoint: Point; view: View } | null = null;
@@ -50,6 +50,8 @@ export function attachPointerController(
     if (pointers.size >= 2) {
       pending = null;
       engine.endStroke(true);
+      engine.endFlow(true);
+      engine.endTrail(true);
       mode = 'pinch';
       pinch = { ...pinchMetrics(), view: view() };
       return;
@@ -59,13 +61,15 @@ export function attachPointerController(
     if (s.tool === 'pan' || space) { mode = 'pan'; return; }
     const p = toSurface(last, canvas.getBoundingClientRect(), view());
     if (!inside(p)) { mode = 'none'; return; }
-    if (s.tool === 'stroke') {
+    if (s.tool === 'flow') {
+      mode = engine.beginFlow(p, s.brushRadius, s.strength, s.persistence) ? 'flow' : 'none';
+      onNote(mode === 'flow' ? '流体ペン：ドラッグで流れをつくり、離すと慣性で広がります。' : '現在の操作が完了してから流体ペンを使えます。');
+    } else if (s.tool === 'stroke') {
       mode = engine.beginStroke(p, s.brushRadius, s.strength) ? 'stroke' : 'none';
       if (mode === 'none') onNote('滴下が完了してから変形ペンを使えます。');
     } else {
       mode = 'drop';
-      if (event.pointerType === 'mouse') drop(p, s);
-      else pending = { point: p, start: last, settings: { ...s } };
+      pending = { point: p, start: last, settings: { ...s } };
     }
   };
   const move = (event: PointerEvent) => {
@@ -85,18 +89,32 @@ export function attachPointerController(
     } else if (mode === 'pan') {
       const v = view();
       setView({ zoom: v.zoom, pan: { x: v.pan.x + (event.clientX - last.x) / rect.width, y: v.pan.y + (event.clientY - last.y) / rect.height } });
-    } else if (mode === 'stroke') {
+    } else if (mode === 'stroke' || mode === 'flow' || mode === 'trail' || (mode === 'drop' && pending)) {
+      if (mode === 'drop' && pending) {
+        if (Math.hypot(event.clientX - pending.start.x, event.clientY - pending.start.y) <= 5) return;
+        const s = pending.settings;
+        const started = engine.beginTrail(pending.point, s.radius, s.color, s.dropSpacing);
+        pending = null;
+        mode = started ? 'trail' : 'none';
+        if (!started) { onNote('現在の操作が完了してから連続滴下できます。'); return; }
+        onNote('指の軌跡に沿って連続滴下。ひと続きの軌跡をUndoで戻せます。');
+      }
       const events = event.getCoalescedEvents?.() ?? [];
       for (const sample of events.length ? events : [event]) {
         const p = toSurface(point(sample), rect, view());
-        engine.moveStroke({ x: Math.max(0, Math.min(1024, p.x)), y: Math.max(0, Math.min(1024, p.y)) });
+        const target = { x: Math.max(0, Math.min(1024, p.x)), y: Math.max(0, Math.min(1024, p.y)) };
+        if (mode === 'flow') engine.moveFlow(target);
+        else if (mode === 'trail') engine.moveTrail(target);
+        else engine.moveStroke(target);
       }
-    } else if (pending && Math.hypot(event.clientX - pending.start.x, event.clientY - pending.start.y) > 8) pending = null;
+    }
     last = point(event);
   };
   const up = (event: PointerEvent) => {
     if (!pointers.has(event.pointerId)) return;
     if (mode === 'stroke') { move(event); engine.endStroke(); }
+    if (mode === 'flow') { move(event); engine.endFlow(); }
+    if (mode === 'trail') { move(event); engine.endTrail(); }
     if (mode === 'drop' && pending) {
       if (Math.hypot(event.clientX - pending.start.x, event.clientY - pending.start.y) <= 8) drop(pending.point, pending.settings);
     }
@@ -108,6 +126,8 @@ export function attachPointerController(
   };
   const cancel = () => {
     engine.endStroke(true);
+    engine.endFlow(true);
+    engine.endTrail(true);
     pointers.clear();
     pending = null;
     mode = 'none';

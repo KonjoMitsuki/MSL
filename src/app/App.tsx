@@ -5,14 +5,16 @@ import type { EngineStatus, Point, Tool } from '../model/types';
 import { attachPointerController } from '../input/pointerController';
 import { SettingsPanel } from '../components/SettingsPanel';
 import { downloadPng, exportPng } from '../export/exportPng';
+import { version } from '../../package.json';
 
 declare global { interface Window { __lab?: MarblingEngine } }
 
-const toolNames = { drop: '滴下', stroke: '変形ペン', pan: '移動' };
+const toolNames = { drop: '滴下', stroke: '変形ペン', flow: '流体ペン', pan: '移動' };
 const initialStatus: EngineStatus = { isAnimating: false, queuedDrops: 0, operations: 0, fps: 0, canUndo: false, canRedo: false, isStroking: false, contextLost: false };
 
 export function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const cursorRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<MarblingEngine | null>(null);
   const helpRef = useRef<HTMLDialogElement>(null);
   const [color, setColor] = useState(defaults.activeColor);
@@ -21,15 +23,17 @@ export function App() {
   const [duration, setDuration] = useState(defaults.spreadDurationMs);
   const [brushRadius, setBrushRadius] = useState(defaults.brushRadius);
   const [strength, setStrength] = useState(defaults.brushStrength);
+  const [persistence, setPersistence] = useState(1.2);
+  const [dropSpacing, setDropSpacing] = useState(0.7);
   const [tool, setTool] = useState<Tool>('drop');
   const [resolution, setResolution] = useState(() => new URLSearchParams(location.search).get('resolution') === '512' ? 512 : 1024);
   const [view, setView] = useState<{ zoom: number; pan: Point }>({ zoom: 1, pan: { x: 0, y: 0 } });
   const [status, setStatus] = useState<EngineStatus>(initialStatus);
   const [error, setError] = useState('');
   const [ready, setReady] = useState(false);
-  const [note, setNote] = useState('水面をクリック・タップして、最初の一滴を。');
-  const settingsRef = useRef({ tool, color, radius, duration, brushRadius, strength });
-  settingsRef.current = { tool, color, radius, duration, brushRadius, strength };
+  const [note, setNote] = useState('タップで一滴、なぞると指に沿って連続滴下。');
+  const settingsRef = useRef({ tool, color, radius, duration, brushRadius, strength, persistence, dropSpacing });
+  settingsRef.current = { tool, color, radius, duration, brushRadius, strength, persistence, dropSpacing };
   const baseRef = useRef(base);
   baseRef.current = base;
   const busy = status.isAnimating || status.isStroking || status.contextLost || !ready;
@@ -123,7 +127,7 @@ export function App() {
 
   return <div className="app">
     <header className="topbar">
-      <div className="brand"><span className="brand-mark">◉</span><div><h1>Marbling Surface Lab</h1><span className="eyebrow">色流しの実験室 / PROTOTYPE 0.1</span></div></div>
+      <div className="brand"><span className="brand-mark">◉</span><div><h1>Marbling Surface Lab</h1><span className="eyebrow">色流しの実験室 / v{version}</span></div></div>
       <nav className="actions" aria-label="編集操作">
         <button aria-label="Undo" title="Undo · Ctrl / Cmd + Z" disabled={busy || !status.canUndo} onClick={() => engineRef.current?.undo()}>↶ <span>Undo</span></button>
         <button aria-label="Redo" title="Redo · Ctrl / Cmd + Shift + Z" disabled={busy || !status.canRedo} onClick={() => engineRef.current?.redo()}>↷ <span>Redo</span></button>
@@ -135,28 +139,50 @@ export function App() {
     </header>
     <main className="workspace">
       <aside className="tools"><span className="eyebrow">TOOLS</span>
-        {(['drop', 'stroke', 'pan'] as const).map((name, index) => <button key={name} className={`tool ${tool === name ? 'selected' : ''}`} aria-pressed={tool === name} onClick={() => setTool(name)}><span>{['◉', '〰', '✥'][index]}</span>{toolNames[name]}</button>)}
+        {(['drop', 'stroke', 'flow', 'pan'] as const).map((name, index) => <button key={name} className={`tool ${tool === name ? 'selected' : ''}`} aria-pressed={tool === name} onClick={() => {
+          setTool(name);
+          setNote(name === 'flow' ? '流体ペン：色の境界を横切るようにドラッグ。余韻で流れの続く時間を調整できます。'
+            : name === 'stroke' ? '変形ペン：水面をつかんで長く引き延ばせます。半径と強度を調整してみてください。'
+            : name === 'drop' ? 'タップで一滴、なぞると指に沿って連続滴下します。' : 'ドラッグで移動、ホイール・ピンチで拡大縮小。');
+        }}><span>{['◉', '〰', '≈', '✥'][index]}</span>{toolNames[name]}</button>)}
         <div className="tool-note">色を落とす。<br />水面が動く。</div>
       </aside>
       <section className="surface-area" aria-label="水面">
         <div className="surface-heading"><span>01 / SURFACE</span><span>{resolution} × {resolution} · WebGL2</span></div>
-        <div className={`canvas-frame tool-${tool}`}><canvas ref={canvasRef} tabIndex={0} aria-label="マーブリング水面" /></div>
+        <div className={`canvas-frame tool-${tool}`}>
+          <canvas ref={canvasRef} tabIndex={0} aria-label="マーブリング水面"
+            onPointerMove={(event) => {
+              const cursor = cursorRef.current!;
+              if (tool === 'pan') { cursor.style.display = 'none'; return; }
+              const rect = event.currentTarget.getBoundingClientRect();
+              const diameter = 2 * (tool === 'drop' ? radius : brushRadius) * view.zoom * rect.width / 1024;
+              Object.assign(cursor.style, { display: 'block', width: `${diameter}px`, height: `${diameter}px`,
+                left: `${event.clientX - rect.left}px`, top: `${event.clientY - rect.top}px` });
+            }}
+            onPointerLeave={() => { if (cursorRef.current) cursorRef.current.style.display = 'none'; }}
+            onPointerUp={(event) => { if (event.pointerType !== 'mouse' && cursorRef.current) cursorRef.current.style.display = 'none'; }} />
+          <div ref={cursorRef} className="brush-cursor" aria-hidden="true" />
+        </div>
         <div className="view-controls"><button aria-label="縮小" disabled={!ready || status.contextLost} onClick={() => zoomBy(0.8)}>−</button><button aria-label="表示をフィット" disabled={!ready || status.contextLost} onClick={fit}>{Math.round(view.zoom * 100)}% · FIT</button><button aria-label="拡大" disabled={!ready || status.contextLost} onClick={() => zoomBy(1.25)}>＋</button><span>ホイール / ピンチで拡大</span></div>
         <p className="surface-caption" aria-live="polite"><span className="live-dot" />{note}</p>
+        {status.isFlowing && <button className="stop-flow" onClick={() => engineRef.current?.settleFlow()}>流れを止めて確定</button>}
         {error && <div role="alert" className="error">{error}</div>}
       </section>
-      <SettingsPanel {...{ color, base, radius, duration, brushRadius, strength, resolution, setColor, setBase, setRadius, setDuration, setBrushRadius, setStrength, clear }} disabled={busy}
+      <SettingsPanel {...{ color, base, radius, duration, brushRadius, strength, resolution, tool, persistence, setPersistence, dropSpacing, setDropSpacing, setColor, setBase, setRadius, setDuration, setBrushRadius, setStrength, clear }} disabled={busy}
         setResolution={(value) => {
           if (!confirm('解像度を変更すると、新しい水面になり作品と履歴が消えます。続けますか？')) return;
           setResolution(value);
           setNote(`${value}pxの新しい水面を作成しました。半径と座標は1024基準です。`);
         }} />
     </main>
-    <footer><span><span className="live-dot" />{status.contextLost ? '復帰待ち' : status.isAnimating ? '広がり中' : status.isStroking ? '変形中' : 'READY'} {status.queuedDrops > 0 && `· 待機 ${status.queuedDrops}/10`}</span><span>{Math.round(view.zoom * 100)}% <i />{toolNames[tool]}<i />{status.operations} 操作 {import.meta.env.DEV && <><i />{status.fps || '—'} fps</>}</span><span>LOCAL ONLY · 独立したアートツール</span></footer>
+    <footer><span><span className="live-dot" />{status.contextLost ? '復帰待ち' : status.isFlowing ? '流体計算中' : status.isAnimating ? '広がり中' : status.isStroking ? '変形中' : 'READY'} {status.queuedDrops > 0 && `· 待機 ${status.queuedDrops}/10`}</span><span>{Math.round(view.zoom * 100)}% <i />{toolNames[tool]}<i />{status.operations} 操作 {import.meta.env.DEV && <><i />{status.fps || '—'} fps</>}</span><span>LOCAL ONLY · 独立したアートツール</span></footer>
     <dialog ref={helpRef} className="help-dialog">
       <h2>水面を、動かしてみる。</h2>
       <p>滴下：クリック・タップでインクを投入。新しい円の外側では、背景を含む旧水面全体を逆写像で押し出します。</p>
+      <p>連続滴下：滴下ツールでなぞると、指の軌跡に沿って一定間隔で滴を落とします。「連続滴下の間隔」で密度を調整。即時描画で指に追従し、軌跡全体がUndoの1操作になります。</p>
       <p>変形ペン：ドラッグで色の境界を引き延ばします。1本のドラッグが1操作。キャンセル時は元に戻ります。</p>
+      <p>流体ペン：64×64の流速・圧力場を計算して水面全体を移流します。指を離した後の余韻も含めて1操作。流れが止まるとUndo・PNG保存が使えます。「流れを止めて確定」で途中停止できます。</p>
+      <p>色：4種類のパレットと自由なHEX・カラーピッカー。「この色を保存」で最大24色をこのブラウザに保存できます。</p>
       <p>移動：移動ツールまたはSpace＋ドラッグ。ホイール・2本指ピンチで拡大縮小します。</p>
       <p>Undo：Ctrl / Cmd＋Z。Redo：Ctrl / Cmd＋Shift＋Z。最大50操作。全消去もUndoできます。</p>
       <p>AT-03：青背景に紫130px、赤80pxを順に投入。赤と紫の間に残る青と、紫の変形を観察してください。</p>

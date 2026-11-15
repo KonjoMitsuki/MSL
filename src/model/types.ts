@@ -17,6 +17,8 @@ export type StrokeOperation = {
 export type Operation =
   | DropOperation
   | StrokeOperation
+  | FlowOperation
+  | TrailOperation
   | { type: 'clear'; id: string; baseColor: string };
 
 export type DocumentState = {
@@ -27,7 +29,15 @@ export type DocumentState = {
   operations: Operation[];
 };
 
-export type Tool = 'drop' | 'stroke' | 'pan';
+export type FlowOperation = {
+  type: 'flow'; id: string; radius: number; strength: number; persistence: number;
+  frames: Array<Array<{ a: Point; b: Point }>>;
+};
+export type TrailOperation = {
+  type: 'trail'; id: string; points: Point[]; radius: number; color: string; spacing: number;
+};
+
+export type Tool = 'drop' | 'stroke' | 'flow' | 'pan';
 export type EngineStatus = {
   isAnimating: boolean;
   queuedDrops: number;
@@ -37,4 +47,5 @@ export type EngineStatus = {
   canRedo: boolean;
   isStroking: boolean;
   contextLost: boolean;
+  isFlowing?: boolean;
 };

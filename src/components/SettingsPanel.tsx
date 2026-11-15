@@ -1,10 +1,14 @@
 import { ColorInput } from './ColorInput';
+import { ColorPalette } from './ColorPalette';
+import type { Tool } from '../model/types';
 
 type Props = {
   color: string; base: string; radius: number; duration: number; brushRadius: number; strength: number; resolution: number;
   setColor: (v: string) => void; setBase: (v: string) => void; setRadius: (v: number) => void; setDuration: (v: number) => void;
   setBrushRadius: (v: number) => void; setStrength: (v: number) => void; setResolution: (v: number) => void;
   clear: () => void; disabled: boolean;
+  tool: Tool; persistence: number; setPersistence: (v: number) => void;
+  dropSpacing: number; setDropSpacing: (v: number) => void;
 };
 
 function Slider({ label, value, min, max, step = 1, unit, onChange }: {
@@ -16,16 +20,26 @@ function Slider({ label, value, min, max, step = 1, unit, onChange }: {
 }
 
 export function SettingsPanel(p: Props) {
+  const pen = p.tool === 'stroke' || p.tool === 'flow';
   return <aside className="settings">
-    <div className="panel-heading"><span className="eyebrow">INK SETTINGS</span><h2>一滴をつくる</h2></div>
+    <div className="panel-heading"><span className="eyebrow">{pen ? 'SURFACE MOTION' : 'INK SETTINGS'}</span><h2>{p.tool === 'flow' ? '流れをつくる' : pen ? '水面を引き延ばす' : '一滴をつくる'}</h2></div>
+    {!pen && <>
     <ColorInput label="インク色" value={p.color} onChange={p.setColor} />
-    <div className="swatches">{['#6929E8', '#F02045', '#278BEC', '#F6C85B', '#F7F3EA', '#171B23'].map((value) => <button key={value} aria-label={`色 ${value}`} aria-pressed={p.color.toUpperCase() === value} className={p.color.toUpperCase() === value ? 'active' : ''} style={{ background: value }} onClick={() => p.setColor(value)} />)}</div>
+    <ColorPalette color={p.color} onChange={p.setColor} />
     <Slider label="滴の半径" value={p.radius} min={4} max={180} unit="px" onChange={p.setRadius} />
+    <Slider label="連続滴下の間隔" value={p.dropSpacing} min={0.3} max={2} step={0.1} unit="× 半径" onChange={p.setDropSpacing} />
+    <p className="setting-hint">タップで一滴、なぞると連続滴下。小さい半径で繊細な線に。連続滴下中は追従を優先して即時に広がります。</p>
     <Slider label="広がり時間" value={p.duration} min={0} max={1500} step={50} unit="ms" onChange={p.setDuration} />
+    </>}
+    {pen && <section className="pen-settings" aria-label="ペン設定">
+      <Slider label="ペン半径" value={p.brushRadius} min={2} max={240} unit="px" onChange={p.setBrushRadius} />
+      <Slider label="ペン強度" value={p.strength} min={0.05} max={3} step={0.05} unit="" onChange={p.setStrength} />
+      {p.tool === 'flow' && <><Slider label="余韻" value={p.persistence} min={0.2} max={2} step={0.1} unit="秒" onChange={p.setPersistence} />
+        <p className="setting-hint">流速と圧力を計算。色の境界を横切って、ゆっくり弧を描いてください。離した後も流れが続きます。</p></>}
+      {p.tool !== 'flow' && <p className="setting-hint">変形ペンは指に追従。流体ペンは周囲を巻き込み、慣性で流れます。</p>}
+    </section>}
     <details className="advanced" open={matchMedia('(min-width: 901px)').matches || undefined}>
-      <summary>詳細設定 · ペン / 背景 / 解像度</summary>
-      <Slider label="ペン半径" value={p.brushRadius} min={2} max={120} unit="px" onChange={p.setBrushRadius} />
-      <Slider label="ペン強度" value={p.strength} min={0.05} max={1} step={0.05} unit="" onChange={p.setStrength} />
+      <summary>詳細設定 · 背景 / 解像度</summary>
       <div className="panel-divider" />
       <ColorInput label="背景色" value={p.base} onChange={p.setBase} />
       <button className="wide" disabled={p.disabled} onClick={p.clear}>この背景で全消去</button>
