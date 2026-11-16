@@ -34,7 +34,7 @@ export function SettingsPanel(p: Props) {
     {p.waterFade > 0 && <Slider label="薄まりの強さ" value={p.waterFade} min={0.1} max={1} step={0.05} unit="" onChange={p.setWaterFade} />}
     <Slider label="境界の抵抗" value={p.boundaryResistance} min={0} max={1} step={0.05} unit="" onChange={p.setBoundaryResistance} />
     <Slider label="連続滴下の間隔" value={p.dropSpacing} min={0.3} max={2} step={0.1} unit="× 半径" onChange={p.setDropSpacing} />
-    <p className="setting-hint">タップで一滴、押し続けるとその場でさらに広がります。なぞると連続滴下。境界の抵抗を上げると、他の色に触れた辺だけ広がりが止まり、押し返します。「外側を水で薄める」は単発の滴下と押下成長の縁を透かし、下の水色を見せます（連続滴下は不透明）。</p>
+    <p className="setting-hint">タップで一滴、押し続けるとその場でさらに広がります。なぞると連続滴下。境界の抵抗を上げると、他の色に触れた辺だけ広がりが止まり、押し返します。「外側を水で薄める」は単発の滴下と押下成長の縁を透かし、下の水色を見せます（連続滴下は不透明）。境界の抵抗0・「外側を水で薄める」OFFが、Jafferの純粋な円形滴下です。</p>
     <Slider label="広がり時間" value={p.duration} min={0} max={1500} step={50} unit="ms" onChange={p.setDuration} />
     </>}
     {pen && <section className="pen-settings" aria-label="ペン設定">

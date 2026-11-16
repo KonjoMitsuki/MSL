@@ -79,6 +79,7 @@ test('AT-09/12: mouse mapping at zoom, resize persistence, UI keyboard history a
   await page.getByLabel('広がり時間', { exact: true }).fill('0');
   const canvas = page.locator('canvas');
   await page.getByRole('button', { name: '拡大', exact: true }).click();
+  await canvas.scrollIntoViewIfNeeded();
   const rect = (await canvas.boundingBox())!;
   await page.mouse.click(rect.x + rect.width * 0.7, rect.y + rect.height * 0.4);
   const painted = await page.evaluate(() => {
