@@ -18,6 +18,8 @@ export function attachPointerController(
   onView: (view: View) => void,
   onNote: (message: string) => void,
   locked: () => boolean = () => false,
+  sampling: () => boolean = () => false,
+  onSample: (point: Point) => void = () => {},
 ) {
   const pointers = new Map<number, Point>();
   let space = false;
@@ -48,6 +50,11 @@ export function attachPointerController(
   const down = (event: PointerEvent) => {
     if (locked()) return;
     if (event.button !== 0 || engine.status.contextLost) return;
+    if (sampling()) {
+      event.preventDefault();
+      onSample(toSurface(point(event), canvas.getBoundingClientRect(), view()));
+      return;
+    }
     event.preventDefault();
     canvas.focus({ preventScroll: true });
     canvas.setPointerCapture(event.pointerId);

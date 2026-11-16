@@ -31,8 +31,13 @@ h1 { margin: 0; font-size: 17px; font-weight: 800; letter-spacing: .08em; }
 canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
 .tool-pan canvas { cursor: grab; }
 .tool-pan canvas:active { cursor: grabbing; }
+.tool-sample canvas, .tool-sample canvas:active { cursor: crosshair; }
 .brush-cursor { display: none; position: absolute; pointer-events: none; border: 1px solid #fff; box-shadow: 0 0 0 1px #0007; border-radius: 50%; transform: translate(-50%, -50%); }
-.tool-pan .brush-cursor, .tool-crop .brush-cursor { visibility: hidden; }
+.tool-pan .brush-cursor, .tool-crop .brush-cursor, .tool-sample .brush-cursor { visibility: hidden; }
+.sample-marker { position: absolute; width: 22px; height: 22px; border: 2px solid white; border-radius: 50%; box-shadow: 0 0 0 2px #111925; transform: translate(-50%, -50%); pointer-events: none; }
+.sample-marker::after { content: ''; position: absolute; inset: 8px; background: white; border-radius: 50%; }
+.sample-toolbar { position: absolute; bottom: 8px; left: 8px; right: 8px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; border-radius: 12px; background: #111925ed; color: white; font-size: 12px; }
+.sample-toolbar button { flex: none; min-height: 36px; padding: 6px 12px; }
 .tool-crop canvas { cursor: default; }
 .view-controls { position: absolute; bottom: -36px; left: 50%; transform: translateX(-50%); display: flex; gap: 2px; padding: 2px; border-radius: 12px; background: #20242ae8; }
 .view-controls button { background: transparent; border: none; font-size: 13px; min-width: 44px; min-height: 32px; padding: 4px 8px; }
@@ -102,6 +107,8 @@ input[type=color]::-webkit-color-swatch-wrapper { padding: 1px; }
 input[type=color]::-webkit-color-swatch { border: 1px solid #ffffff66; border-radius: 50%; }
 input[type=color]::-moz-color-swatch { border: 1px solid #ffffff66; border-radius: 50%; }
 .hex-input { min-width: 0; width: 100%; min-height: 44px; padding: 10px 12px; font-family: ui-monospace, monospace; font-size: 16px; }
+.sample-color { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; margin-top: 16px; font-size: 13px; }
+.sample-color svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .hex-input[aria-invalid=true] { border-color: #ffb8bf; }
 .field-hint { display: block; color: #ffb8bf; margin-top: 6px; }
 .hue-wheel { position: relative; width: 216px; height: 216px; margin: 20px auto; }
@@ -175,6 +182,11 @@ input[type=color]::-moz-color-swatch { border: 1px solid #ffffff66; border-radiu
   .workspace:has(.crop-toolbar) .control-area { position: static; display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%; }
   .workspace:has(.crop-toolbar) .crop-toolbar { position: static; transform: none; width: min(100%, 480px); max-height: none; padding: 12px; }
   .workspace:has(.crop-toolbar) .tool-dock { position: static; transform: none; }
+}
+@media (forced-colors: active) {
+  .sample-marker { border-color: CanvasText; box-shadow: none; }
+  .sample-marker::after { background: CanvasText; }
+  .sample-toolbar { border: 1px solid CanvasText; }
 }
 @media (max-width: 360px) {
   .brand small { font-size: 9px; }

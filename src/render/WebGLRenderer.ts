@@ -237,6 +237,21 @@ export class WebGLRenderer {
     this.display();
   }
 
+  // Read one source pixel instead of the whole surface or the antialiased display canvas.
+  sampleColor(point: Point): string | null {
+    if (point.x < 0 || point.y < 0 || point.x >= 1024 || point.y >= 1024) return null;
+    this.resolveTransport();
+    const gl = this.gl;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.surfaces[this.preview ? 1 - this.current : this.current].framebuffer);
+    const pixel = new Uint8Array(4);
+    gl.readPixels(Math.floor(point.x / 1024 * this.resolution),
+      this.resolution - 1 - Math.floor(point.y / 1024 * this.resolution), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+    const background = rgb(this.background);
+    return `#${Array.from(pixel.subarray(0, 3), (value, index) =>
+      Math.round(value * pixel[3] / 255 + background[index] * (255 - pixel[3]))
+        .toString(16).padStart(2, '0')).join('').toUpperCase()}`;
+  }
+
   // RGBA rows are top-to-bottom, independent of the physical viewport and display AA.
   pixels(): Uint8Array {
     this.resolveTransport();

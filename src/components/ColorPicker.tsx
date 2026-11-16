@@ -6,9 +6,13 @@ const hues = ['#E0354A', '#F38035', '#FFBC39', '#E4E83A', '#83CE43', '#3EC787', 
 const hueNames = ['赤（上）', 'オレンジ', '黄', '黄緑', '緑', '青緑', '水色', '青', '青紫', '紫', '赤紫', '赤（左上）'];
 const hueAssets = import.meta.glob('../assets/figma/hue-*.svg', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
 
-export function ColorPicker({ color, onChange }: { color: string; onChange: (color: string) => void }) {
+export function ColorPicker({ color, onChange, onSample, canSample }: { color: string; onChange: (color: string) => void; onSample: () => void; canSample: boolean }) {
   return <div className="color-picker">
     <ColorInput label="インク色" value={color} onChange={onChange} />
+    <button className="sample-color" disabled={!canSample} onClick={onSample}>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m13 5 6 6m-8 1 7-7a2.1 2.1 0 0 1 3 3l-7 7m-3-3-6 6-2 4 4-2 6-6M5 18l1 1" /></svg>
+      スポイトで水面から色を選ぶ
+    </button>
     <div className="hue-wheel" role="group" aria-label="色相から選ぶ">
       {hues.map((value, i) => {
         const angle = i * Math.PI / 6;

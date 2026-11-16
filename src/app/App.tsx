@@ -3,7 +3,7 @@ import { MarblingEngine } from '../core/MarblingEngine';
 import { DEFAULT_INK, effectiveDropRadius, effectiveSpreadDuration, normalizeInk } from '../core/InkModel';
 import { BLUE, defaults, demoDrops, RED } from '../model/defaults';
 import type { EngineStatus, InkMaterial, Point, Tool } from '../model/types';
-import { attachPointerController } from '../input/pointerController';
+import { attachPointerController, toSurface } from '../input/pointerController';
 import { SettingsPanel } from '../components/SettingsPanel';
 import { BottomSheet } from '../components/BottomSheet';
 import { ColorPicker } from '../components/ColorPicker';
@@ -46,12 +46,16 @@ export function App() {
   const [sheet, setSheet] = useState<'colors' | 'settings' | 'export' | 'help' | null>(null);
   const sheetRef = useRef(sheet);
   sheetRef.current = sheet;
-  const openColors = useCallback(() => setSheet('colors'), []);
-  const openSettings = useCallback(() => setSheet('settings'), []);
-  const openHelp = useCallback(() => setSheet('help'), []);
+  const openColors = useCallback(() => { setSampling(false); setSheet('colors'); }, []);
+  const openSettings = useCallback(() => { setSampling(false); setSheet('settings'); }, []);
+  const openHelp = useCallback(() => { setSampling(false); setSheet('help'); }, []);
   const [exporting, setExporting] = useState(false);
   const [exportMessage, setExportMessage] = useState('');
   const [color, setColor] = useState(defaults.activeColor);
+  const [sampling, setSampling] = useState(false);
+  const samplingRef = useRef(false);
+  samplingRef.current = sampling;
+  const [samplePoint, setSamplePoint] = useState<Point>({ x: 512, y: 512 });
   const [base, setBase] = useState(defaults.baseColor);
   const [radius, setRadius] = useState(defaults.dropRadius);
   const [duration, setDuration] = useState(defaults.spreadDurationMs);
@@ -104,6 +108,46 @@ export function App() {
   baseRef.current = base;
   const busy = status.isAnimating || status.isStroking || status.contextLost || !ready || exporting;
 
+  function sampleSurface(point: Point) {
+    const engine = engineRef.current;
+    if (!engine || engine.status.contextLost) return;
+    try {
+      const picked = engine.renderer.sampleColor(point);
+      if (!picked) { setNote('水面の内側を選んでください。'); return; }
+      setColor(picked);
+      setSampling(false);
+      setNote(`水面から ${picked} を選びました。`);
+    } catch (err) {
+      setSampling(false);
+      setError(String(err));
+    }
+  }
+
+  function startSampling() {
+    const canvas = canvasRef.current;
+    const renderer = engineRef.current?.renderer;
+    if (!canvas || !renderer || busy) return;
+    const rect = canvas.getBoundingClientRect();
+    const center = toSurface({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }, rect, renderer);
+    setSamplePoint({ x: Math.max(0, Math.min(1023, center.x)), y: Math.max(0, Math.min(1023, center.y)) });
+    setSheet(null);
+    setSampling(true);
+    setNote('スポイト：水面をタップして色を選択。矢印キーで位置を動かし、Enterで選択。Escで中止。');
+    requestAnimationFrame(() => canvas.focus({ preventScroll: true }));
+  }
+
+  useEffect(() => {
+    if (!sampling) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !document.querySelector('dialog[open]')) {
+        setSampling(false);
+        setNote('スポイトを中止しました。');
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [sampling]);
+
   useEffect(() => {
     const canvas = canvasRef.current!;
     let engine: MarblingEngine;
@@ -122,7 +166,8 @@ export function App() {
       setError(String(err));
       return;
     }
-    const detach = attachPointerController(canvas, engine, () => settingsRef.current, setView, setNote, () => cropModeRef.current || sheetRef.current !== null);
+    const detach = attachPointerController(canvas, engine, () => settingsRef.current, setView, setNote,
+      () => cropModeRef.current || sheetRef.current !== null, () => samplingRef.current, sampleSurface);
     const resize = new ResizeObserver(([entry]) => {
       if (engine.status.contextLost) return;
       const size = Math.max(1, Math.round(entry.contentRect.width * Math.min(devicePixelRatio, 2)));
@@ -245,11 +290,25 @@ export function App() {
     </header>
     <main className="workspace">
       <section className="surface-area" aria-label="水面">
-        <div className={`canvas-frame tool-${tool} ${cropMode ? 'tool-crop' : ''}`}>
+        <div className={`canvas-frame tool-${tool} ${cropMode ? 'tool-crop' : ''} ${sampling ? 'tool-sample' : ''}`}>
           <canvas ref={canvasRef} tabIndex={0} aria-label="マーブリング水面" aria-describedby="canvas-instructions"
+            onKeyDown={(event) => {
+              if (!sampling) return;
+              if (event.key === 'Enter') { event.preventDefault(); sampleSurface(samplePoint); }
+              if (event.key.startsWith('Arrow')) {
+                const direction = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[event.key];
+                if (!direction) return;
+                event.preventDefault();
+                const step = (event.shiftKey ? 1 : 16) / view.zoom;
+                setSamplePoint(previous => ({
+                  x: Math.max(0, Math.min(1023, previous.x + direction[0] * step)),
+                  y: Math.max(0, Math.min(1023, previous.y + direction[1] * step)),
+                }));
+              }
+            }}
             onPointerMove={(event) => {
               const cursor = cursorRef.current!;
-              if (cropMode || tool === 'pan' || event.pointerType === 'touch') { cursor.style.display = 'none'; return; }
+              if (sampling || cropMode || tool === 'pan' || event.pointerType === 'touch') { cursor.style.display = 'none'; return; }
               const rect = event.currentTarget.getBoundingClientRect();
               const diameter = 2 * (tool === 'drop' ? effectiveRadius : brushRadius) * view.zoom * rect.width / 1024;
               Object.assign(cursor.style, { display: 'block', width: `${diameter}px`, height: `${diameter}px`,
@@ -258,6 +317,13 @@ export function App() {
             onPointerLeave={() => { if (cursorRef.current) cursorRef.current.style.display = 'none'; }}
             onPointerUp={(event) => { if (event.pointerType !== 'mouse' && cursorRef.current) cursorRef.current.style.display = 'none'; }} />
           <div ref={cursorRef} className="brush-cursor" aria-hidden="true" />
+          {sampling && <>
+            <div className="sample-marker" aria-hidden="true" style={{
+              left: `${((samplePoint.x / 1024 - .5) * view.zoom + .5 + view.pan.x) * 100}%`,
+              top: `${((samplePoint.y / 1024 - .5) * view.zoom + .5 + view.pan.y) * 100}%`,
+            }} />
+            <div className="sample-toolbar"><span>水面をタップして色を選ぶ</span><button onClick={() => { setSampling(false); setNote('スポイトを中止しました。'); }}>中止</button></div>
+          </>}
           {cropMode && !status.contextLost && <CropOverlay crop={crop} aspect={cropAspect} onChange={setCrop} />}
         </div>
         <div className="view-controls"><button aria-label="縮小" title="縮小" disabled={!ready || status.contextLost || cropMode} onClick={() => zoomBy(0.8)}>−</button><button aria-label="表示をフィット" title="全体表示" disabled={!ready || status.contextLost || cropMode} onClick={fit}>{Math.round(view.zoom * 100)}%</button><button aria-label="拡大" title="拡大" disabled={!ready || status.contextLost || cropMode} onClick={() => zoomBy(1.25)}>＋</button></div>
@@ -268,12 +334,12 @@ export function App() {
       <div className="control-area">
         {cropMode ? <CropControls {...{ cropAspect, changeAspect, crop, setCropField, cropOutputWidth, setCropOutputWidth, outputWidth, outputHeight, saveCrop, toggleCrop }} disabled={busy} /> :
           <QuickControls {...{ tool, color, radius, brushRadius, strength, persistence, dropSpacing, setRadius, setBrushRadius, setStrength, setPersistence, setDropSpacing, openColors, openSettings, openHelp }} />}
-        <ToolDock tool={tool} disabled={cropMode || status.isPressing === true || (status.isStroking && !status.isFlowing)} onChange={(next) => { setTool(next); setNote(toolHints[next]); }} />
+        <ToolDock tool={tool} disabled={cropMode || status.isPressing === true || (status.isStroking && !status.isFlowing)} onChange={(next) => { setSampling(false); setTool(next); setNote(toolHints[next]); }} />
       </div>
     </main>
     <footer><span>{status.contextLost ? '描画の復帰待ち' : status.isPressing ? '滴を広げています' : status.isFlowing ? '水面が流れています' : status.isAnimating ? '滴が広がっています' : status.isStroking ? '水面を変形しています' : '描画できます'} {status.queuedDrops > 0 && `· 待機 ${status.queuedDrops}/10`}</span><span>{status.operations} 操作 · 作品は自動保存されません</span></footer>
     <BottomSheet title={sheet === 'colors' ? 'カラーを選択' : sheet === 'settings' ? `${toolNames[tool]}の詳細設定` : sheet === 'export' ? '作品を書き出す' : '使い方'} open={sheet !== null} onClose={() => setSheet(null)}>
-      {sheet === 'colors' && <><ColorPicker color={color} onChange={setColor} /><button className="primary wide" onClick={() => setSheet(null)}>この色を使う</button></>}
+      {sheet === 'colors' && <><ColorPicker color={color} onChange={setColor} onSample={startSampling} canSample={!busy} /><button className="primary wide" onClick={() => setSheet(null)}>この色を使う</button></>}
       {sheet === 'settings' && <>
         <SettingsPanel {...{ base, duration, brushRadius, strength, resolution, tool, persistence, setPersistence, dropSpacing, setDropSpacing, ink, setInk: changeInk, resetInk, effectiveRadius, effectiveDuration, waterFade, setWaterFade, setBase, setDuration, setBrushRadius, setStrength, clear }} disabled={busy}
           setResolution={(value) => {
