@@ -3,7 +3,10 @@ import { rgb, spreadRadius } from './DropTransform';
 import { StrokeSampler, strokeSteps } from './StrokeTransform';
 import { OperationHistory } from '../history/OperationHistory';
 import { FluidSolver, FLOW_DT, type FlowImpulse } from './FluidSolver';
-import type { DropOperation, EngineStatus, FlowOperation, Operation, Point, StrokeOperation, TrailOperation } from '../model/types';
+import {
+  DEFAULT_INK, effectiveDropRadius, effectiveSpreadDuration, inkGrowthRate, normalizeInk,
+} from './InkModel';
+import type { DropOperation, EngineStatus, FlowOperation, InkMaterial, Operation, Point, StrokeOperation, TrailOperation } from '../model/types';
 
 export class MarblingEngine {
   renderer: WebGLRenderer;
@@ -61,7 +64,15 @@ export class MarblingEngine {
         x < 0 || x > 1024 || y < 0 || y > 1024 || operation.radius < 4 || operation.radius > 180 ||
         operation.durationMs < 0 || operation.durationMs > 1500) return false;
     rgb(operation.color);
-    this.queue.push({ ...operation, center: { ...operation.center } });
+    const ink = normalizeInk(operation.ink);
+    const prepared: DropOperation = {
+      ...operation,
+      center: { ...operation.center },
+      radius: effectiveDropRadius(operation.radius, ink),
+      durationMs: effectiveSpreadDuration(operation.durationMs, ink),
+      ink,
+    };
+    this.queue.push(prepared);
     if (!this.active) this.next();
     this.emit();
     return true;
@@ -76,7 +87,6 @@ export class MarblingEngine {
     }
     this.started = performance.now();
     this.frames = 0;
-    this.renderer.prepareDrop(this.active.center);
     if (this.active.durationMs === 0) this.tick(this.started);
     else this.frame = requestAnimationFrame(this.tick);
   }
@@ -107,25 +117,26 @@ export class MarblingEngine {
   // holding only changes the radius; releasing commits one ordinary DropOperation.
   beginPressDrop(
     center: Point, radius: number, color: string, durationMs: number,
-    boundaryResistance = 0, waterFade = 0, maxRadius = 180,
+    waterFade = 0, ink: Partial<InkMaterial> = DEFAULT_INK, maxRadius = 180,
   ): boolean {
     if (this.flowState?.released) this.settleFlow();
     if (this.lost || this.disposed || this.active || this.stroke || this.flowState || this.trail || this.press) return false;
-    const resistance = Math.max(0, Math.min(1, boundaryResistance));
     const fade = Math.max(0, Math.min(1, waterFade));
-    if (![center.x, center.y, radius, durationMs, resistance, fade, maxRadius].every(Number.isFinite) ||
+    const material = normalizeInk(ink);
+    if (![center.x, center.y, radius, durationMs, fade, maxRadius].every(Number.isFinite) ||
         center.x < 0 || center.x > 1024 || center.y < 0 || center.y > 1024 ||
         radius < 4 || radius > 180 || durationMs < 0 || durationMs > 1500) return false;
     rgb(color);
+    const baseRadius = effectiveDropRadius(radius, material);
     this.press = {
       operation: {
-        type: 'drop', id: crypto.randomUUID(), center: { ...center }, radius, color,
-        durationMs: 0, boundaryResistance: resistance, waterFade: fade,
+        type: 'drop', id: crypto.randomUUID(), center: { ...center }, radius: baseRadius, color,
+        durationMs: 0, ink: material, waterFade: fade,
       },
-      baseRadius: radius, currentRadius: 0, started: performance.now(), duration: durationMs,
-      maxRadius: Math.max(radius, Math.min(180, maxRadius)), releasing: false,
+      baseRadius, currentRadius: 0, started: performance.now(),
+      duration: effectiveSpreadDuration(durationMs, material),
+      maxRadius: Math.max(baseRadius, Math.min(180, maxRadius)), releasing: false,
     };
-    this.renderer.prepareDrop(center);
     this.renderer.drop(this.press.operation, 0);
     this.renderer.display();
     this.pressTick(performance.now());
@@ -138,7 +149,7 @@ export class MarblingEngine {
     if (!press) return;
     try {
       const elapsed = Math.max(0, now - press.started);
-      const growth = Math.max(18, press.baseRadius * 0.8);
+      const growth = inkGrowthRate(press.baseRadius, press.operation.ink);
       let radius: number;
       if (press.duration === 0) radius = Math.min(press.maxRadius, press.baseRadius + elapsed / 1000 * growth);
       else if (elapsed <= press.duration) radius = spreadRadius(press.baseRadius, elapsed / press.duration);
@@ -203,7 +214,7 @@ export class MarblingEngine {
 
   private apply(operation: Operation) {
     if (operation.type === 'clear') this.renderer.clear(operation.baseColor);
-    if (operation.type === 'drop') { this.renderer.prepareDrop(operation.center); this.renderer.drop(operation); this.renderer.commit(); }
+    if (operation.type === 'drop') { this.renderer.drop(operation); this.renderer.commit(); }
     if (operation.type === 'trail') {
       for (const center of operation.points) this.applyTrailDrop(operation, center);
     }
@@ -412,13 +423,17 @@ export class MarblingEngine {
     }
   };
 
-  beginTrail(point: Point, radius: number, color: string, spacingRatio = 0.7, boundaryResistance = 0): boolean {
+  beginTrail(
+    point: Point, radius: number, color: string, spacingRatio = 0.7,
+    ink: Partial<InkMaterial> = DEFAULT_INK,
+  ): boolean {
     if (this.flowState?.released) this.settleFlow();
     if (this.lost || this.disposed || this.stroke || this.flowState || this.trail || this.press) return false;
-    if (![point.x, point.y, radius, spacingRatio, boundaryResistance].every(Number.isFinite) ||
-        radius < 4 || radius > 180 || spacingRatio < 0.3 || spacingRatio > 2 ||
-        boundaryResistance < 0 || boundaryResistance > 1) return false;
+    if (![point.x, point.y, radius, spacingRatio].every(Number.isFinite) ||
+        radius < 4 || radius > 180 || spacingRatio < 0.3 || spacingRatio > 2) return false;
     rgb(color);
+    const material = normalizeInk(ink);
+    const effectiveRadius = effectiveDropRadius(radius, material);
     // Finish any preceding taps at their exact final radius before starting the
     // live trail. Continuous drops then commit immediately, without a lagging queue.
     if (this.active) {
@@ -426,19 +441,16 @@ export class MarblingEngine {
       const waiting = [this.active, ...this.queue];
       this.active = null;
       this.queue = [];
-      for (const op of waiting) {
-        this.renderer.prepareDrop(op.center);
-        this.renderer.drop(op); this.renderer.commit(); this.record(op);
-      }
+      for (const op of waiting) { this.renderer.drop(op); this.renderer.commit(); this.record(op); }
       for (const resolve of this.waiters.splice(0)) resolve();
     }
     // Continuous drops stay opaque: overlapping faded rims would visibly ridge
     // and erode the trail. Water fade is therefore a single-drop/press feature.
-    const spacing = Math.max(8, radius * spacingRatio);
+    const spacing = Math.max(8, effectiveRadius * spacingRatio);
     this.trail = {
       operation: {
-        type: 'trail', id: crypto.randomUUID(), points: [{ ...point }], radius, color, spacing,
-        boundaryResistance: Math.max(0, Math.min(1, boundaryResistance)),
+        type: 'trail', id: crypto.randomUUID(), points: [{ ...point }], radius: effectiveRadius,
+        color, spacing, ink: material,
       },
       snapshot: this.renderer.pixels(), sampler: new StrokeSampler(point, spacing),
     };
@@ -449,10 +461,9 @@ export class MarblingEngine {
   }
 
   private applyTrailDrop(op: TrailOperation, center: Point) {
-    this.renderer.prepareDrop(center);
     this.renderer.drop({
       type: 'drop', id: op.id, center, radius: op.radius, color: op.color, durationMs: 0,
-      boundaryResistance: op.boundaryResistance ?? 0,
+      ink: op.ink,
     });
     this.renderer.commit();
   }

@@ -1,6 +1,6 @@
 import { ColorInput } from './ColorInput';
 import { ColorPalette } from './ColorPalette';
-import type { Tool } from '../model/types';
+import type { InkMaterial, Tool } from '../model/types';
 
 type Props = {
   color: string; base: string; radius: number; duration: number; brushRadius: number; strength: number; resolution: number;
@@ -9,7 +9,8 @@ type Props = {
   clear: () => void; disabled: boolean;
   tool: Tool; persistence: number; setPersistence: (v: number) => void;
   dropSpacing: number; setDropSpacing: (v: number) => void;
-  boundaryResistance: number; setBoundaryResistance: (v: number) => void;
+  ink: InkMaterial; setInk: (patch: Partial<InkMaterial>) => void; resetInk: () => void;
+  effectiveRadius: number; effectiveDuration: number;
   waterFade: number; setWaterFade: (v: number) => void;
 };
 
@@ -29,12 +30,19 @@ export function SettingsPanel(p: Props) {
     <ColorInput label="インク色" value={p.color} onChange={p.setColor} />
     <ColorPalette color={p.color} onChange={p.setColor} />
     <Slider label="滴の半径" value={p.radius} min={4} max={180} unit="px" onChange={p.setRadius} />
+    <section className="ink-material" aria-label="インクの物性">
+      <div className="setting-label">インクの物性 <small>色ごとに保存</small></div>
+      <Slider label="インク粘度" value={p.ink.viscosity} min={0.2} max={3} step={0.05} unit="" onChange={(viscosity) => p.setInk({ viscosity })} />
+      <Slider label="表面張力" value={p.ink.surfaceTension} min={0.3} max={1.5} step={0.05} unit="" onChange={(surfaceTension) => p.setInk({ surfaceTension })} />
+      <div className="effective-readout"><span>実効半径 {p.effectiveRadius.toFixed(1)}px</span><span>実効広がり時間 {Math.round(p.effectiveDuration)}ms</span></div>
+      <p className="setting-hint">粘度が高いほどゆっくり広がります。表面張力が低いほど（界面活性剤が多いほど）同じ滴が大きく広がります。色の境界だけを特別に止める処理は使わず、材料差として挙動が変わります。</p>
+      <button className="wide" disabled={p.disabled} onClick={p.resetInk}>この色の物性を初期値に戻す</button>
+    </section>
     <label className="check-row"><input aria-label="外側を水で薄める" type="checkbox" checked={p.waterFade > 0}
       onChange={(event) => p.setWaterFade(event.target.checked ? 0.65 : 0)} />外側を水で薄める</label>
     {p.waterFade > 0 && <Slider label="薄まりの強さ" value={p.waterFade} min={0.1} max={1} step={0.05} unit="" onChange={p.setWaterFade} />}
-    <Slider label="境界の抵抗" value={p.boundaryResistance} min={0} max={1} step={0.05} unit="" onChange={p.setBoundaryResistance} />
     <Slider label="連続滴下の間隔" value={p.dropSpacing} min={0.3} max={2} step={0.1} unit="× 半径" onChange={p.setDropSpacing} />
-    <p className="setting-hint">タップで一滴、押し続けるとその場でさらに広がります。なぞると連続滴下。境界の抵抗を上げると、他の色に触れた辺だけ広がりが止まり、押し返します。「外側を水で薄める」は単発の滴下と押下成長の縁を透かし、下の水色を見せます（連続滴下は不透明）。境界の抵抗0・「外側を水で薄める」OFFが、Jafferの純粋な円形滴下です。</p>
+    <p className="setting-hint">タップで一滴、押し続けるとその場でさらに広がります。なぞると連続滴下。「外側を水で薄める」は単発の滴下と押下成長の縁を透かし、下の水色を見せます（連続滴下は不透明）。</p>
     <Slider label="広がり時間" value={p.duration} min={0} max={1500} step={50} unit="ms" onChange={p.setDuration} />
     </>}
     {pen && <section className="pen-settings" aria-label="ペン設定">

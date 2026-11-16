@@ -11,7 +11,6 @@ export const defaults = {
   spreadDurationMs: 450,
   brushRadius: 80,
   brushStrength: 1.2,
-  boundaryResistance: 0.55,
 };
 export const demoDrops = (durationMs = 450): DropOperation[] => [
   { type: 'drop', id: crypto.randomUUID(), center: { x: 420, y: 512 }, radius: 130, color: PURPLE, durationMs },

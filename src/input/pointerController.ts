@@ -1,7 +1,7 @@
 import type { MarblingEngine } from '../core/MarblingEngine';
-import type { Point, Tool } from '../model/types';
+import type { InkMaterial, Point, Tool } from '../model/types';
 
-type Settings = { tool: Tool; color: string; radius: number; duration: number; brushRadius: number; strength: number; persistence: number; dropSpacing: number; boundaryResistance: number; waterFade: number };
+type Settings = { tool: Tool; color: string; radius: number; duration: number; brushRadius: number; strength: number; persistence: number; dropSpacing: number; ink: InkMaterial; waterFade: number };
 type View = { zoom: number; pan: Point };
 
 export function toSurface(client: Point, rect: Pick<DOMRect, 'left' | 'top' | 'width' | 'height'>, view: View): Point {
@@ -37,7 +37,7 @@ export function attachPointerController(
   const drop = (p: Point, s: Settings) => {
     const accepted = engine.enqueue({
       type: 'drop', id: crypto.randomUUID(), center: p, radius: s.radius, color: s.color,
-      durationMs: s.duration, boundaryResistance: s.boundaryResistance, waterFade: s.waterFade,
+      durationMs: s.duration, ink: s.ink, waterFade: s.waterFade,
     });
     onNote(accepted ? '新しいインクが、背景を含むすべての色を押し広げます。' : '入力待機中です。滴下キューは最大10件です。');
   };
@@ -76,7 +76,7 @@ export function attachPointerController(
     } else {
       mode = 'drop';
       pending = { point: p, start: last, settings: { ...s }, pressStarted: false };
-      const started = engine.beginPressDrop(p, s.radius, s.color, s.duration, s.boundaryResistance, s.waterFade);
+      const started = engine.beginPressDrop(p, s.radius, s.color, s.duration, s.waterFade, s.ink);
       pending.pressStarted = started;
       onNote(started
         ? '押し続けると、その場でインクがさらに広がります。離すと確定。'
@@ -105,7 +105,7 @@ export function attachPointerController(
         if (Math.hypot(event.clientX - pending.start.x, event.clientY - pending.start.y) <= 5) return;
         const s = pending.settings;
         if (pending.pressStarted) engine.cancelPressDrop();
-        const started = engine.beginTrail(pending.point, s.radius, s.color, s.dropSpacing, s.boundaryResistance);
+        const started = engine.beginTrail(pending.point, s.radius, s.color, s.dropSpacing, s.ink);
         pending = null;
         mode = started ? 'trail' : 'none';
         if (!started) { onNote('現在の操作が完了してから連続滴下できます。'); return; }

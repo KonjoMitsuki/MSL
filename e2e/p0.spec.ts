@@ -194,7 +194,7 @@ test('WebGL context loss cancels preview and reconstructs committed history on r
     const at = (x: number) => [...data.slice((512 * 1024 + x) * 4, (512 * 1024 + x) * 4 + 3)];
     return { count: e.status.operations, purple: at(420), cancelledRed: at(690), textures: e.renderer.textureCount, error: e.renderer.gl.getError() };
   });
-  expect(result).toEqual({ count: 1, purple: [105, 41, 232], cancelledRed: [39, 139, 236], textures: 3, error: 0 });
+  expect(result).toEqual({ count: 1, purple: [105, 41, 232], cancelledRed: [39, 139, 236], textures: 2, error: 0 });
 });
 
 test('WebGL2 unavailable shows an actionable error', async ({ page }) => {
@@ -255,7 +255,7 @@ test('AT-11: 100 drops, bounded GPU resources/history, replay beyond eviction an
   expect(result.undoToBaseline).toBe(true);
   expect(result.redoExact).toBe(true);
   expect(result.after).toEqual(result.before);
-  expect(result.after.live).toBe(3);
+  expect(result.after.live).toBe(2);
   expect(result.error).toBe(0);
   await writeFile('docs/performance.json', JSON.stringify({ measuredAt: new Date().toISOString(), environment: 'Linux, Chromium, software WebGL2 / SwiftShader; not a physical-device benchmark', ...result }, null, 2) + '\n');
 });

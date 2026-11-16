@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { MarblingEngine } from '../core/MarblingEngine';
+import { DEFAULT_INK, effectiveDropRadius, effectiveSpreadDuration, normalizeInk } from '../core/InkModel';
 import { BLUE, defaults, demoDrops, RED } from '../model/defaults';
-import type { EngineStatus, Point, Tool } from '../model/types';
+import type { EngineStatus, InkMaterial, Point, Tool } from '../model/types';
 import { attachPointerController } from '../input/pointerController';
 import { SettingsPanel } from '../components/SettingsPanel';
 import { CropOverlay } from '../components/CropOverlay';
@@ -12,6 +13,25 @@ import { version } from '../../package.json';
 declare global { interface Window { __lab?: MarblingEngine } }
 
 const toolNames = { drop: '滴下', stroke: '変形ペン', flow: '流体ペン', pan: '移動' };
+const INK_STORAGE = 'msl.ink-profiles.v1';
+
+function loadInkProfiles(): Record<string, InkMaterial> {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(INK_STORAGE) ?? '{}');
+    if (!parsed || typeof parsed !== 'object') return {};
+    const result: Record<string, InkMaterial> = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      if (!/^#[0-9A-F]{6}$/i.test(key) || !value || typeof value !== 'object') continue;
+      const candidate = value as Partial<InkMaterial>;
+      if (!Number.isFinite(candidate.viscosity) || !Number.isFinite(candidate.surfaceTension)) continue;
+      result[key.toUpperCase()] = normalizeInk(candidate);
+    }
+    return result;
+  } catch {
+    return {};
+  }
+}
+
 const initialStatus: EngineStatus = { isAnimating: false, queuedDrops: 0, operations: 0, fps: 0, canUndo: false, canRedo: false, isStroking: false, contextLost: false };
 
 export function App() {
@@ -27,7 +47,8 @@ export function App() {
   const [strength, setStrength] = useState(defaults.brushStrength);
   const [persistence, setPersistence] = useState(1.2);
   const [dropSpacing, setDropSpacing] = useState(0.7);
-  const [boundaryResistance, setBoundaryResistance] = useState(defaults.boundaryResistance);
+  const [inkProfiles, setInkProfiles] = useState<Record<string, InkMaterial>>(loadInkProfiles);
+  const [ink, setInk] = useState<InkMaterial>(DEFAULT_INK);
   const [waterFade, setWaterFade] = useState(0);
   const [tool, setTool] = useState<Tool>('drop');
   const [resolution, setResolution] = useState(() => new URLSearchParams(location.search).get('resolution') === '512' ? 512 : 1024);
@@ -44,8 +65,29 @@ export function App() {
   const [cropOutputWidth, setCropOutputWidth] = useState(1024);
   const outputWidth = Math.max(64, Math.min(2048, Math.round(cropOutputWidth || 1024)));
   const outputHeight = cropOutputHeight(crop, outputWidth, aspectRatio(cropAspect));
-  const settingsRef = useRef({ tool, color, radius, duration, brushRadius, strength, persistence, dropSpacing, boundaryResistance, waterFade });
-  settingsRef.current = { tool, color, radius, duration, brushRadius, strength, persistence, dropSpacing, boundaryResistance, waterFade };
+  useEffect(() => { setInk(inkProfiles[color.toUpperCase()] ?? DEFAULT_INK); }, [color]);
+  const changeInk = (patch: Partial<InkMaterial>) => {
+    const next = normalizeInk({ ...ink, ...patch });
+    setInk(next);
+    setInkProfiles((previous) => {
+      const profiles = { ...previous, [color.toUpperCase()]: next };
+      try { localStorage.setItem(INK_STORAGE, JSON.stringify(profiles)); } catch { /* storage may be unavailable */ }
+      return profiles;
+    });
+  };
+  const resetInk = () => {
+    setInk({ ...DEFAULT_INK });
+    setInkProfiles((previous) => {
+      const profiles = { ...previous };
+      delete profiles[color.toUpperCase()];
+      try { localStorage.setItem(INK_STORAGE, JSON.stringify(profiles)); } catch { /* storage may be unavailable */ }
+      return profiles;
+    });
+  };
+  const effectiveRadius = effectiveDropRadius(radius, ink);
+  const effectiveDuration = effectiveSpreadDuration(duration, ink);
+  const settingsRef = useRef({ tool, color, radius, duration, brushRadius, strength, persistence, dropSpacing, ink, waterFade });
+  settingsRef.current = { tool, color, radius, duration, brushRadius, strength, persistence, dropSpacing, ink, waterFade };
   const baseRef = useRef(base);
   baseRef.current = base;
   const busy = status.isAnimating || status.isStroking || status.contextLost || !ready;
@@ -208,7 +250,7 @@ export function App() {
               const cursor = cursorRef.current!;
               if (cropMode || tool === 'pan') { cursor.style.display = 'none'; return; }
               const rect = event.currentTarget.getBoundingClientRect();
-              const diameter = 2 * (tool === 'drop' ? radius : brushRadius) * view.zoom * rect.width / 1024;
+              const diameter = 2 * (tool === 'drop' ? effectiveRadius : brushRadius) * view.zoom * rect.width / 1024;
               Object.assign(cursor.style, { display: 'block', width: `${diameter}px`, height: `${diameter}px`,
                 left: `${event.clientX - rect.left}px`, top: `${event.clientY - rect.top}px` });
             }}
@@ -246,7 +288,7 @@ export function App() {
         {status.isFlowing && <button className="stop-flow" onClick={() => engineRef.current?.settleFlow()}>流れを止めて確定</button>}
         {error && <div role="alert" className="error">{error}</div>}
       </section>
-      <SettingsPanel {...{ color, base, radius, duration, brushRadius, strength, resolution, tool, persistence, setPersistence, dropSpacing, setDropSpacing, boundaryResistance, setBoundaryResistance, waterFade, setWaterFade, setColor, setBase, setRadius, setDuration, setBrushRadius, setStrength, clear }} disabled={busy}
+      <SettingsPanel {...{ color, base, radius, duration, brushRadius, strength, resolution, tool, persistence, setPersistence, dropSpacing, setDropSpacing, ink, setInk: changeInk, resetInk, effectiveRadius, effectiveDuration, waterFade, setWaterFade, setColor, setBase, setRadius, setDuration, setBrushRadius, setStrength, clear }} disabled={busy}
         setResolution={(value) => {
           if (!confirm('解像度を変更すると、新しい水面になり作品と履歴が消えます。続けますか？')) return;
           setResolution(value);
@@ -258,7 +300,7 @@ export function App() {
       <h2>水面を、動かしてみる。</h2>
       <p>滴下：クリック・タップでインクを投入。押し続けると、その場で同じ色の滴がさらに広がります。新しい円の外側では、背景を含む旧水面全体を逆写像で押し出します。</p>
       <p>水で薄める：滴下設定の「外側を水で薄める」をオンにすると、滴の縁ほど透明度が上がり、下の水色が透けます。色のRGBは混ぜず、アルファだけを変えるため、輪郭の色ラベルは保たれます。押し続けて広げた場合も同じです。</p>
-      <p>境界の抵抗：別の色に近い辺だけ、広がりが局所的に遅くなります。相手の色も同じ変形を受けるため、境界が押し合うように見えます。色は混ざらず、面積の押し出しだけを変えます。</p>
+      <p>インクの物性：色ごとに粘度と表面張力を保存できます。粘度が高い色はゆっくり広がり、表面張力が低い色（界面活性剤が多い色）は同じ半径設定でも大きく広がります。色の境界だけを特別に止める処理は使わず、材料差とJaffer逆写像だけで押し出し形状を作ります。</p>
       <p>連続滴下：滴下ツールでなぞると、指の軌跡に沿って一定間隔で滴を落とします。「連続滴下の間隔」で密度を調整。即時描画で指に追従し、軌跡全体がUndoの1操作になります。</p>
       <p>変形ペン：ドラッグで色の境界を引き延ばします。1本のドラッグが1操作。キャンセル時は元に戻ります。</p>
       <p>流体ペン：64×64の流速・圧力場を計算して水面全体を移流します。指を離した後の余韻も含めて1操作。流れが止まるとUndo・PNG保存が使えます。「流れを止めて確定」で途中停止できます。</p>

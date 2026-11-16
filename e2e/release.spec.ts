@@ -63,19 +63,19 @@ test('press-and-hold grows the same drop, short taps finish, cancel leaves no hi
   expect(result.cancelled).toEqual({ operations: 0, unchanged: true, pressing: false });
 });
 
-test('a nearby colour boundary retards only the contacting side and pushes the old colour less', async ({ page }) => {
+test('surface tension changes spread and displacement without producing mixed colours', async ({ page }) => {
   test.setTimeout(60_000);
   await page.goto('./?resolution=512');
   await page.waitForFunction(() => !!window.__lab);
 
   const result = await page.evaluate(() => {
     const e = window.__lab!;
-    const measure = (boundaryResistance: number) => {
+    const measure = (surfaceTension: number) => {
       e.reset('#278BEC');
       e.enqueue({ type: 'drop', id: 'purple', center: { x: 420, y: 512 }, radius: 130, color: '#6929E8', durationMs: 0 });
       e.enqueue({
         type: 'drop', id: 'red', center: { x: 690, y: 512 }, radius: 100, color: '#F02045',
-        durationMs: 0, boundaryResistance,
+        durationMs: 0, ink: { viscosity: 1, surfaceTension },
       });
       const data = e.renderer.pixels();
       let redMin = 1024, redMax = -1, purpleMax = -1;
@@ -89,16 +89,16 @@ test('a nearby colour boundary retards only the contacting side and pushes the o
       }
       return { redMin, redMax, purpleMax, palette: [...palette].sort() };
     };
-    return { plain: measure(0), resisted: measure(1), error: e.renderer.gl.getError() };
+    return { low: measure(0.6), high: measure(1.4), error: e.renderer.gl.getError() };
   });
 
-  // Left-facing red front stops earlier, while the free right side stays put.
-  expect(result.resisted.redMin).toBeGreaterThan(result.plain.redMin + 5);
-  expect(Math.abs(result.resisted.redMax - result.plain.redMax)).toBeLessThanOrEqual(2);
-  // The old purple edge is displaced less because the red front presses less hard.
-  expect(result.resisted.purpleMax).toBeGreaterThan(result.plain.purpleMax);
-  expect(result.plain.palette).toEqual(['105,41,232', '240,32,69', '39,139,236']);
-  expect(result.resisted.palette).toEqual(['105,41,232', '240,32,69', '39,139,236']);
+  // Lower surface tension gives the same nominal drop a larger equilibrium radius.
+  expect(result.high.redMin).toBeGreaterThan(result.low.redMin + 20);
+  expect(result.high.redMax).toBeLessThan(result.low.redMax - 10);
+  // It presses the older purple less.
+  expect(result.high.purpleMax).toBeGreaterThan(result.low.purpleMax);
+  expect(result.low.palette).toEqual(['105,41,232', '240,32,69', '39,139,236']);
+  expect(result.high.palette).toEqual(['105,41,232', '240,32,69', '39,139,236']);
   expect(result.error).toBe(0);
 });
 

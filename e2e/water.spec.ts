@@ -66,7 +66,9 @@ test('the water fade option is optional and PNG export keeps the background opaq
   await expect(page.getByRole('slider', { name: '薄まりの強さ' })).toBeVisible();
   await page.getByRole('slider', { name: '薄まりの強さ' }).fill('1');
 
-  const box = (await page.locator('canvas').boundingBox())!;
+  const canvas = page.locator('canvas');
+  await canvas.scrollIntoViewIfNeeded();
+  const box = (await canvas.boundingBox())!;
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
   await page.waitForFunction(() => window.__lab!.status.operations === 1 && !window.__lab!.status.isAnimating);
 
