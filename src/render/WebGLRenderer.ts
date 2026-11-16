@@ -30,6 +30,7 @@ export class WebGLRenderer {
   private vao: WebGLVertexArrayObject;
   zoom = 1;
   pan: Point = { x: 0, y: 0 };
+  background = '#ffffff';
 
   constructor(readonly canvas: HTMLCanvasElement, readonly resolution = 1024) {
     const gl = canvas.getContext('webgl2', {
@@ -147,6 +148,7 @@ export class WebGLRenderer {
 
   clear(color: string) {
     const gl = this.gl;
+    this.background = color;
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.surfaces[this.current].framebuffer);
     gl.clearColor(...rgb(color), 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
@@ -180,6 +182,7 @@ export class WebGLRenderer {
     gl.uniform1f(gl.getUniformLocation(this.dropProgram, 'uRadius'), radius);
     gl.uniform3f(gl.getUniformLocation(this.dropProgram, 'uColor'), ...rgb(operation.color));
     gl.uniform1f(gl.getUniformLocation(this.dropProgram, 'uResistance'), Math.max(0, Math.min(1, operation.boundaryResistance ?? 0)));
+    gl.uniform1f(gl.getUniformLocation(this.dropProgram, 'uWaterFade'), Math.max(0, Math.min(1, operation.waterFade ?? 0)));
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, this.profileTexture);
     gl.uniform1i(gl.getUniformLocation(this.dropProgram, 'uProfile'), 1);
@@ -276,6 +279,7 @@ export class WebGLRenderer {
     this.bind(this.displayProgram, this.preview ? 1 - this.current : this.current, null);
     this.gl.uniform1f(this.gl.getUniformLocation(this.displayProgram, 'uZoom'), this.zoom);
     this.gl.uniform2f(this.gl.getUniformLocation(this.displayProgram, 'uPan'), this.pan.x, this.pan.y);
+    this.gl.uniform3f(this.gl.getUniformLocation(this.displayProgram, 'uBackground'), ...rgb(this.background));
     this.gl.drawArrays(this.gl.TRIANGLES, 0, 3);
   }
 

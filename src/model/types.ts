@@ -9,6 +9,9 @@ export type DropOperation = {
   // 0 keeps the pure Jaffer circle. Higher values let a nearby colour boundary
   // resist the expanding front without mixing either pigment.
   boundaryResistance?: number;
+  // 0 keeps pigment fully opaque. Higher values fade alpha toward the drop edge,
+  // letting the water background show through without mixing colour labels.
+  waterFade?: number;
 };
 export type StrokeOperation = {
   type: 'stroke';

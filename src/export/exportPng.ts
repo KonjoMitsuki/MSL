@@ -13,16 +13,26 @@ function encode(canvas: HTMLCanvasElement): Promise<Blob> {
   ));
 }
 
-export async function exportPng(pixels: Uint8Array, size: number): Promise<Blob> {
+function applyBackground(canvas: HTMLCanvasElement, background: string) {
+  const context = canvasContext(canvas);
+  context.save();
+  context.globalCompositeOperation = 'destination-over';
+  context.fillStyle = background;
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.restore();
+}
+
+export async function exportPng(pixels: Uint8Array, size: number, background = '#ffffff'): Promise<Blob> {
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = size;
   canvasContext(canvas).putImageData(new ImageData(new Uint8ClampedArray(pixels), size, size), 0, 0);
+  applyBackground(canvas, background);
   return encode(canvas);
 }
 
 export async function exportCropPng(
   pixels: Uint8Array, sourceSize: number, crop: CropRect,
-  outputWidth: number, outputHeight: number,
+  outputWidth: number, outputHeight: number, background = '#ffffff',
 ): Promise<Blob> {
   const scale = sourceSize / 1024;
   const sx = Math.max(0, Math.min(sourceSize - 1, Math.round(crop.x * scale)));
@@ -51,6 +61,7 @@ export async function exportCropPng(
     context.imageSmoothingQuality = 'high';
     context.drawImage(source, sx, sy, sw, sh, 0, 0, outputWidth, outputHeight);
   }
+  applyBackground(out, background);
   return encode(out);
 }
 

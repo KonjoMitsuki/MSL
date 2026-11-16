@@ -3,6 +3,7 @@ precision highp float;
 uniform sampler2D uSurface;
 uniform float uZoom;
 uniform vec2 uPan;
+uniform vec3 uBackground;
 in vec2 vUV;
 out vec4 outColor;
 // Bilinear reconstruction only for display. Simulation remains exact NEAREST RGB.
@@ -19,6 +20,9 @@ void main() {
   vec2 p = uv * vec2(size) - 0.5;
   ivec2 i = ivec2(floor(p));
   vec2 f = fract(p);
-  outColor = mix(mix(fetchAt(i, size), fetchAt(i + ivec2(1, 0), size), f.x),
-                 mix(fetchAt(i + ivec2(0, 1), size), fetchAt(i + ivec2(1, 1), size), f.x), f.y);
+  vec4 c = mix(mix(fetchAt(i, size), fetchAt(i + ivec2(1, 0), size), f.x),
+               mix(fetchAt(i + ivec2(0, 1), size), fetchAt(i + ivec2(1, 1), size), f.x), f.y);
+  // Thinned pigment is composited over the water colour only at display time.
+  // Simulation labels and alpha remain independent.
+  outColor = vec4(c.rgb * c.a + uBackground * (1.0 - c.a), 1.0);
 }

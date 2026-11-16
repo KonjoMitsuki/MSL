@@ -1,7 +1,7 @@
 import type { MarblingEngine } from '../core/MarblingEngine';
 import type { Point, Tool } from '../model/types';
 
-type Settings = { tool: Tool; color: string; radius: number; duration: number; brushRadius: number; strength: number; persistence: number; dropSpacing: number; boundaryResistance: number };
+type Settings = { tool: Tool; color: string; radius: number; duration: number; brushRadius: number; strength: number; persistence: number; dropSpacing: number; boundaryResistance: number; waterFade: number };
 type View = { zoom: number; pan: Point };
 
 export function toSurface(client: Point, rect: Pick<DOMRect, 'left' | 'top' | 'width' | 'height'>, view: View): Point {
@@ -37,7 +37,7 @@ export function attachPointerController(
   const drop = (p: Point, s: Settings) => {
     const accepted = engine.enqueue({
       type: 'drop', id: crypto.randomUUID(), center: p, radius: s.radius, color: s.color,
-      durationMs: s.duration, boundaryResistance: s.boundaryResistance,
+      durationMs: s.duration, boundaryResistance: s.boundaryResistance, waterFade: s.waterFade,
     });
     onNote(accepted ? '新しいインクが、背景を含むすべての色を押し広げます。' : '入力待機中です。滴下キューは最大10件です。');
   };
@@ -76,7 +76,7 @@ export function attachPointerController(
     } else {
       mode = 'drop';
       pending = { point: p, start: last, settings: { ...s }, pressStarted: false };
-      const started = engine.beginPressDrop(p, s.radius, s.color, s.duration, s.boundaryResistance);
+      const started = engine.beginPressDrop(p, s.radius, s.color, s.duration, s.boundaryResistance, s.waterFade);
       pending.pressStarted = started;
       onNote(started
         ? '押し続けると、その場でインクがさらに広がります。離すと確定。'

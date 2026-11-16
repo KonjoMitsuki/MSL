@@ -65,6 +65,8 @@ code { font-family: ui-monospace, monospace; font-size: 12px; }
 .palette-section { min-width: 0; }
 .palette-label { display: block; font-size: 11px; color: #a0aab8; margin-top: 18px; }
 .setting-hint { display: block; font-size: 11px; line-height: 1.8; color: #a0aab8; }
+.check-row { display: flex; align-items: center; gap: 8px; margin: 18px 0 6px; font-size: 12px; color: #c2c8cf; cursor: pointer; }
+.check-row input { width: 16px; height: 16px; accent-color: #d9ff6b; }
 .save-color { width: 100%; font-size: 11px; padding: 8px; }
 .pen-settings { border-top: 1px solid #343b46; margin-top: 18px; }
 .pen-settings h3 { font-size: 13px; font-weight: 500; color: #b5eddb; margin-top: 22px; }

@@ -107,19 +107,20 @@ export class MarblingEngine {
   // holding only changes the radius; releasing commits one ordinary DropOperation.
   beginPressDrop(
     center: Point, radius: number, color: string, durationMs: number,
-    boundaryResistance = 0, maxRadius = 180,
+    boundaryResistance = 0, waterFade = 0, maxRadius = 180,
   ): boolean {
     if (this.flowState?.released) this.settleFlow();
     if (this.lost || this.disposed || this.active || this.stroke || this.flowState || this.trail || this.press) return false;
     const resistance = Math.max(0, Math.min(1, boundaryResistance));
-    if (![center.x, center.y, radius, durationMs, resistance, maxRadius].every(Number.isFinite) ||
+    const fade = Math.max(0, Math.min(1, waterFade));
+    if (![center.x, center.y, radius, durationMs, resistance, fade, maxRadius].every(Number.isFinite) ||
         center.x < 0 || center.x > 1024 || center.y < 0 || center.y > 1024 ||
         radius < 4 || radius > 180 || durationMs < 0 || durationMs > 1500) return false;
     rgb(color);
     this.press = {
       operation: {
         type: 'drop', id: crypto.randomUUID(), center: { ...center }, radius, color,
-        durationMs: 0, boundaryResistance: resistance,
+        durationMs: 0, boundaryResistance: resistance, waterFade: fade,
       },
       baseRadius: radius, currentRadius: 0, started: performance.now(), duration: durationMs,
       maxRadius: Math.max(radius, Math.min(180, maxRadius)), releasing: false,
@@ -431,6 +432,8 @@ export class MarblingEngine {
       }
       for (const resolve of this.waiters.splice(0)) resolve();
     }
+    // Continuous drops stay opaque: overlapping faded rims would visibly ridge
+    // and erode the trail. Water fade is therefore a single-drop/press feature.
     const spacing = Math.max(8, radius * spacingRatio);
     this.trail = {
       operation: {

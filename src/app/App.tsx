@@ -28,6 +28,7 @@ export function App() {
   const [persistence, setPersistence] = useState(1.2);
   const [dropSpacing, setDropSpacing] = useState(0.7);
   const [boundaryResistance, setBoundaryResistance] = useState(defaults.boundaryResistance);
+  const [waterFade, setWaterFade] = useState(0);
   const [tool, setTool] = useState<Tool>('drop');
   const [resolution, setResolution] = useState(() => new URLSearchParams(location.search).get('resolution') === '512' ? 512 : 1024);
   const [view, setView] = useState<{ zoom: number; pan: Point }>({ zoom: 1, pan: { x: 0, y: 0 } });
@@ -43,8 +44,8 @@ export function App() {
   const [cropOutputWidth, setCropOutputWidth] = useState(1024);
   const outputWidth = Math.max(64, Math.min(2048, Math.round(cropOutputWidth || 1024)));
   const outputHeight = cropOutputHeight(crop, outputWidth, aspectRatio(cropAspect));
-  const settingsRef = useRef({ tool, color, radius, duration, brushRadius, strength, persistence, dropSpacing, boundaryResistance });
-  settingsRef.current = { tool, color, radius, duration, brushRadius, strength, persistence, dropSpacing, boundaryResistance };
+  const settingsRef = useRef({ tool, color, radius, duration, brushRadius, strength, persistence, dropSpacing, boundaryResistance, waterFade });
+  settingsRef.current = { tool, color, radius, duration, brushRadius, strength, persistence, dropSpacing, boundaryResistance, waterFade };
   const baseRef = useRef(base);
   baseRef.current = base;
   const busy = status.isAnimating || status.isStroking || status.contextLost || !ready;
@@ -131,7 +132,7 @@ export function App() {
     const engine = engineRef.current;
     if (!engine || busy) return;
     try {
-      downloadPng(await exportPng(engine.renderer.pixels(), resolution));
+      downloadPng(await exportPng(engine.renderer.pixels(), resolution, engine.renderer.background));
       setNote(`${resolution} × ${resolution} のPNGを書き出しました。表示のズームやUIは含みません。`);
     } catch (err) { setError(String(err)); }
   }
@@ -171,7 +172,7 @@ export function App() {
     const engine = engineRef.current;
     if (!engine || busy) return;
     try {
-      downloadPng(await exportCropPng(engine.renderer.pixels(), resolution, crop, outputWidth, outputHeight), 'marbling-crop');
+      downloadPng(await exportCropPng(engine.renderer.pixels(), resolution, crop, outputWidth, outputHeight, engine.renderer.background), 'marbling-crop');
       setNote(`${outputWidth} × ${outputHeight}px の切り抜きPNGを書き出しました。選択範囲だけを元の色で出力します。`);
     } catch (err) { setError(String(err)); }
   }
@@ -245,7 +246,7 @@ export function App() {
         {status.isFlowing && <button className="stop-flow" onClick={() => engineRef.current?.settleFlow()}>流れを止めて確定</button>}
         {error && <div role="alert" className="error">{error}</div>}
       </section>
-      <SettingsPanel {...{ color, base, radius, duration, brushRadius, strength, resolution, tool, persistence, setPersistence, dropSpacing, setDropSpacing, boundaryResistance, setBoundaryResistance, setColor, setBase, setRadius, setDuration, setBrushRadius, setStrength, clear }} disabled={busy}
+      <SettingsPanel {...{ color, base, radius, duration, brushRadius, strength, resolution, tool, persistence, setPersistence, dropSpacing, setDropSpacing, boundaryResistance, setBoundaryResistance, waterFade, setWaterFade, setColor, setBase, setRadius, setDuration, setBrushRadius, setStrength, clear }} disabled={busy}
         setResolution={(value) => {
           if (!confirm('解像度を変更すると、新しい水面になり作品と履歴が消えます。続けますか？')) return;
           setResolution(value);
@@ -256,6 +257,7 @@ export function App() {
     <dialog ref={helpRef} className="help-dialog">
       <h2>水面を、動かしてみる。</h2>
       <p>滴下：クリック・タップでインクを投入。押し続けると、その場で同じ色の滴がさらに広がります。新しい円の外側では、背景を含む旧水面全体を逆写像で押し出します。</p>
+      <p>水で薄める：滴下設定の「外側を水で薄める」をオンにすると、滴の縁ほど透明度が上がり、下の水色が透けます。色のRGBは混ぜず、アルファだけを変えるため、輪郭の色ラベルは保たれます。押し続けて広げた場合も同じです。</p>
       <p>境界の抵抗：別の色に近い辺だけ、広がりが局所的に遅くなります。相手の色も同じ変形を受けるため、境界が押し合うように見えます。色は混ざらず、面積の押し出しだけを変えます。</p>
       <p>連続滴下：滴下ツールでなぞると、指の軌跡に沿って一定間隔で滴を落とします。「連続滴下の間隔」で密度を調整。即時描画で指に追従し、軌跡全体がUndoの1操作になります。</p>
       <p>変形ペン：ドラッグで色の境界を引き延ばします。1本のドラッグが1操作。キャンセル時は元に戻ります。</p>
