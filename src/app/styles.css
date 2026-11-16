@@ -29,7 +29,7 @@ h1 { margin: 0; font-size: 26px; letter-spacing: -.5px; }
 .surface-area { min-width: 0; position: relative; }
 .surface-heading { max-width: 850px; margin: 0 auto 14px; display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; }
 .surface-heading > span:last-child { font-size: 11px; color: var(--muted); }
-.canvas-frame { position: relative; width: min(100%, calc(100dvh - 310px)); max-width: 850px; aspect-ratio: 1; margin: auto; overflow: hidden; background: #111925; border-radius: 13px; box-shadow: 0 16px 50px #0003; }
+.canvas-frame { position: relative; width: min(100%, calc(100dvh - 310px)); max-width: 850px; aspect-ratio: 1; margin: auto; overflow: hidden; background: #111925; border-radius: 13px; box-shadow: 0 16px 50px #0003; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
 .tool-pan canvas { cursor: grab; }
 .tool-pan canvas:active { cursor: grabbing; }

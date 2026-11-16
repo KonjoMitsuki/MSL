@@ -192,6 +192,32 @@ test('touch continuous drops, pinch rollback and fluid-tool wiring', async ({ br
   await context.close();
 });
 
+test('holding the mobile canvas keeps dripping without text selection or a context menu', async ({ browser }) => {
+  const context = await browser.newContext({ baseURL: 'http://127.0.0.1:5173/MSL/', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  await page.goto('./?resolution=512');
+  const canvas = page.locator('canvas');
+  await canvas.scrollIntoViewIfNeeded();
+  const rect = (await canvas.boundingBox())!;
+  const cdp = await context.newCDPSession(page);
+  const finger = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2, id: 1 };
+  expect(await canvas.evaluate((element) => {
+    const frame = element.parentElement!;
+    return getComputedStyle(frame).userSelect === 'none'
+      && (!CSS.supports('-webkit-touch-callout', 'none')
+        || getComputedStyle(frame).getPropertyValue('-webkit-touch-callout') === 'none');
+  })).toBe(true);
+  expect(await canvas.evaluate((element) => element.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })))).toBe(false);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [finger] });
+  await page.waitForTimeout(700);
+  expect(await page.evaluate(() => window.__lab!.status.isPressing)).toBe(true);
+  expect(await page.evaluate(() => getSelection()?.toString() ?? '')).toBe('');
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  expect(await page.evaluate(() => window.__lab!.status.operations)).toBe(1);
+  expect(await page.locator('.surface-caption').evaluate((element) => getComputedStyle(element).userSelect)).not.toBe('none');
+  await context.close();
+});
+
 test('1024px fluid tool and immediate stop preserve last input as a single replayable operation', async ({ page }) => {
   await page.goto('./');
   await page.waitForFunction(() => !!window.__lab);

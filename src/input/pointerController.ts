@@ -172,11 +172,13 @@ export function attachPointerController(
   const keyup = (event: KeyboardEvent) => { if (event.code === 'Space') space = false; };
   const blur = () => { space = false; cancel(); };
   const lostCapture = (event: PointerEvent) => { if (pointers.has(event.pointerId)) cancel(); };
+  const contextmenu = (event: MouseEvent) => { event.preventDefault(); };
   canvas.addEventListener('pointerdown', down);
   canvas.addEventListener('pointermove', move);
   canvas.addEventListener('pointerup', up);
   canvas.addEventListener('pointercancel', cancel);
   canvas.addEventListener('lostpointercapture', lostCapture);
+  canvas.addEventListener('contextmenu', contextmenu);
   canvas.addEventListener('wheel', wheel, { passive: false });
   window.addEventListener('keydown', keydown);
   window.addEventListener('keyup', keyup);
@@ -188,6 +190,7 @@ export function attachPointerController(
     canvas.removeEventListener('pointerup', up);
     canvas.removeEventListener('pointercancel', cancel);
     canvas.removeEventListener('lostpointercapture', lostCapture);
+    canvas.removeEventListener('contextmenu', contextmenu);
     canvas.removeEventListener('wheel', wheel);
     window.removeEventListener('keydown', keydown);
     window.removeEventListener('keyup', keyup);
