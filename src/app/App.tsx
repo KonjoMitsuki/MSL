@@ -236,16 +236,15 @@ export function App() {
 
   return <div className="app">
     <header className="topbar">
-      <div className="brand"><h1>MSL</h1><div><span>MARBLING SURFACE LAB</span><small>色流しの実験室 · v{version}</small></div></div>
+      <div className="brand"><h1>MSL</h1><small>v{version}</small></div>
       <nav className="actions" aria-label="編集操作">
-        <button className="icon-button" aria-label="Undo" title="元に戻す · Ctrl / Cmd + Z" disabled={busy || !status.canUndo} onClick={() => engineRef.current?.undo()}>↶</button>
-        <button className="icon-button" aria-label="Redo" title="やり直す · Ctrl / Cmd + Shift + Z" disabled={busy || !status.canRedo} onClick={() => engineRef.current?.redo()}>↷</button>
-        <button className="primary icon-button" aria-label="作品を書き出す" title="PNG保存・切り抜き" aria-haspopup="dialog" disabled={busy} onClick={() => { setExportMessage(''); setSheet('export'); }}>⤓</button>
+        <button className="icon-button" aria-label="Undo" title="元に戻す · Ctrl / Cmd + Z" disabled={busy || !status.canUndo} onClick={() => engineRef.current?.undo()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 8 4 12l5 4M4 12h10a6 6 0 0 1 6 6" /></svg></button>
+        <button className="icon-button" aria-label="Redo" title="やり直す · Ctrl / Cmd + Shift + Z" disabled={busy || !status.canRedo} onClick={() => engineRef.current?.redo()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 8 5 4-5 4m5-4H10a6 6 0 0 0-6 6" /></svg></button>
+        <button className="primary icon-button" aria-label="作品を書き出す" title="PNG保存・切り抜き" aria-haspopup="dialog" disabled={busy} onClick={() => { setExportMessage(''); setSheet('export'); }}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 17v3h16v-3" /></svg></button>
       </nav>
     </header>
     <main className="workspace">
       <section className="surface-area" aria-label="水面">
-        <div className="surface-heading"><span>{cropMode ? '切り抜く範囲を選択' : '水面キャンバス'}</span><span>{resolution} px · {Math.round(view.zoom * 100)}%</span></div>
         <div className={`canvas-frame tool-${tool} ${cropMode ? 'tool-crop' : ''}`}>
           <canvas ref={canvasRef} tabIndex={0} aria-label="マーブリング水面" aria-describedby="canvas-instructions"
             onPointerMove={(event) => {
@@ -261,7 +260,7 @@ export function App() {
           <div ref={cursorRef} className="brush-cursor" aria-hidden="true" />
           {cropMode && !status.contextLost && <CropOverlay crop={crop} aspect={cropAspect} onChange={setCrop} />}
         </div>
-        <div className="view-controls"><button aria-label="縮小" disabled={!ready || status.contextLost || cropMode} onClick={() => zoomBy(0.8)}>−</button><button aria-label="表示をフィット" disabled={!ready || status.contextLost || cropMode} onClick={fit}>{Math.round(view.zoom * 100)}% · 全体表示</button><button aria-label="拡大" disabled={!ready || status.contextLost || cropMode} onClick={() => zoomBy(1.25)}>＋</button></div>
+        <div className="view-controls"><button aria-label="縮小" title="縮小" disabled={!ready || status.contextLost || cropMode} onClick={() => zoomBy(0.8)}>−</button><button aria-label="表示をフィット" title="全体表示" disabled={!ready || status.contextLost || cropMode} onClick={fit}>{Math.round(view.zoom * 100)}%</button><button aria-label="拡大" title="拡大" disabled={!ready || status.contextLost || cropMode} onClick={() => zoomBy(1.25)}>＋</button></div>
         <p id="canvas-instructions" className="surface-caption" aria-live="polite">{note}</p>
         {status.isFlowing && <button className="stop-flow" onClick={() => engineRef.current?.settleFlow()}>流れを止めて確定</button>}
         {error && <div role="alert" className="error">{error}</div>}

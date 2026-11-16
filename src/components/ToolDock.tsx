@@ -10,10 +10,15 @@ export const toolHints: Record<Tool, string> = {
 
 export function ToolDock({ tool, onChange, disabled }: { tool: Tool; onChange: (tool: Tool) => void; disabled: boolean }) {
   return <nav className="tool-dock" aria-label="描画ツール">
-    {(['drop', 'stroke', 'flow', 'pan'] as const).map((name, i) => <button key={name}
-      className={`tool ${tool === name ? 'selected' : ''}`} aria-label={toolNames[name]}
+    {(['drop', 'stroke', 'flow', 'pan'] as const).map((name) => <button key={name}
+      className={`tool ${tool === name ? 'selected' : ''}`} aria-label={toolNames[name]} title={toolNames[name]}
       aria-pressed={tool === name} disabled={disabled} onClick={() => onChange(name)}>
-      <span aria-hidden="true">{['●', '〰', '≋', '✥'][i]}</span>{toolNames[name]}
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        {name === 'drop' && <path d="M12 3c-2.5 4-6 7.7-6 11a6 6 0 0 0 12 0c0-3.3-3.5-7-6-11Z" />}
+        {name === 'stroke' && <><path d="m5 19 10-10 3 3L8 22H5v-3ZM13 6l3-3 5 5-3 3" /><path d="m3 6 1-2 2-1-2-1-1-2-1 2-2 1 2 1 1 2Z" /></>}
+        {name === 'flow' && <><path d="M3 8c3-4 5 4 9 0s6-4 9 0M3 15c3-4 5 4 9 0s6-4 9 0" /><path d="m17 19 3-3 3 3" /></>}
+        {name === 'pan' && <><path d="M12 3v18M3 12h18m-12-6 3-3 3 3m-6 12 3 3 3-3M6 9l-3 3 3 3m12-6 3 3-3 3" /></>}
+      </svg>
     </button>)}
   </nav>;
 }
