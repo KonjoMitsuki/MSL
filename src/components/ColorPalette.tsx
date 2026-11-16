@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 const palettes: Record<string, string[]> = {
   ビビッド: ['#6929E8', '#F02045', '#278BEC', '#F6C85B', '#F7F3EA', '#171B23',
@@ -15,6 +15,14 @@ const palettes: Record<string, string[]> = {
     '#667381', '#4B5868', '#354251', '#242E3A', '#171B23', '#000000'],
 };
 const storageKey = 'msl.saved-colors.v1';
+const recentKey = 'msl.recent-colors.v1';
+
+function loadRecent(): string[] {
+  try {
+    const values: unknown = JSON.parse(localStorage.getItem(recentKey) ?? '[]');
+    return Array.isArray(values) ? [...new Set(values.filter((v): v is string => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v)).map(v => v.toUpperCase()))].slice(0, 7) : [];
+  } catch { return []; }
+}
 
 export function ColorPalette({ color, onChange }: { color: string; onChange: (color: string) => void }) {
   const [palette, setPalette] = useState('ビビッド');
@@ -26,24 +34,35 @@ export function ColorPalette({ color, onChange }: { color: string; onChange: (co
   });
   const [message, setMessage] = useState('');
   const selected = color.toUpperCase();
+  const [recent, setRecent] = useState(loadRecent);
+  useEffect(() => {
+    setRecent(previous => {
+      const next = [selected, ...previous.filter(c => c !== selected)].slice(0, 7);
+      try { localStorage.setItem(recentKey, JSON.stringify(next)); } catch { /* Available in this tab even without storage. */ }
+      return next;
+    });
+  }, [selected]);
   function toggleSaved() {
     const next = saved.includes(selected) ? saved.filter((c) => c !== selected) : [selected, ...saved].slice(0, 24);
     setSaved(next);
-    try { localStorage.setItem(storageKey, JSON.stringify(next)); setMessage('色をこのブラウザに保存しました。'); }
+    try { localStorage.setItem(storageKey, JSON.stringify(next)); setMessage(next.includes(selected) ? '色をこのブラウザに保存しました。' : '保存した色から外しました。'); }
     catch { setMessage('この環境では色の保存が制限されています。このタブ内で使えます。'); }
   }
   function swatch(value: string, prefix = '色') {
     return <button key={value} aria-label={`${prefix} ${value}`} title={value} aria-pressed={selected === value}
-      className={selected === value ? 'active' : ''} style={{ background: value }} onClick={() => onChange(value)} />;
+      className={selected === value ? 'active' : ''} style={{ background: value }} onClick={() => onChange(value)}>
+      {selected === value && <span className="swatch-check" aria-hidden="true">✓</span>}</button>;
   }
   return <section className="palette-section" aria-label="カラーパレット">
+    <p className="setting-label">最近選んだ色</p>
+    <div className="swatches recent-colors" aria-label="最近選んだ色">{recent.map(value => swatch(value, '最近の色'))}</div>
     <label className="palette-label">パレット
       <select aria-label="パレット" value={palette} onChange={(e) => setPalette(e.target.value)}>
         {Object.keys(palettes).map((name) => <option key={name}>{name}</option>)}
       </select>
     </label>
     <div className="swatches">{palettes[palette].map((value) => swatch(value))}</div>
-    <p className="setting-hint">上の色チップで自由に選色。HEX入力も使えます。</p>
+    <p className="setting-hint">色を押して選びます。HEXは「#」と6桁の英数字で指定する色番号です。</p>
     <button className="save-color" onClick={toggleSaved}>{saved.includes(selected) ? '− この色を保存色から外す' : '＋ この色を保存'}</button>
     {saved.length > 0 && <div className="swatches saved-colors" aria-label="保存した色">{saved.map((value) => swatch(value, '保存色'))}</div>}
     <span className="setting-hint" role="status">{message}</span>

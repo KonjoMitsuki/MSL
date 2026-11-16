@@ -1,18 +1,23 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { MarblingEngine } from '../core/MarblingEngine';
 import { DEFAULT_INK, effectiveDropRadius, effectiveSpreadDuration, normalizeInk } from '../core/InkModel';
 import { BLUE, defaults, demoDrops, RED } from '../model/defaults';
 import type { EngineStatus, InkMaterial, Point, Tool } from '../model/types';
 import { attachPointerController } from '../input/pointerController';
 import { SettingsPanel } from '../components/SettingsPanel';
+import { BottomSheet } from '../components/BottomSheet';
+import { ColorPicker } from '../components/ColorPicker';
+import { QuickControls } from '../components/QuickControls';
+import { ToolDock, toolNames, toolHints } from '../components/ToolDock';
+import { CropControls } from '../components/CropControls';
+import { EditorHelp } from '../components/EditorHelp';
 import { CropOverlay } from '../components/CropOverlay';
-import { aspectRatio, clampCrop, CROP_ASPECTS, cropOutputHeight, withAspect, type CropAspect, type CropRect } from '../export/crop';
+import { aspectRatio, clampCrop, cropOutputHeight, withAspect, type CropAspect, type CropRect } from '../export/crop';
 import { downloadPng, exportCropPng, exportPng } from '../export/exportPng';
 import { version } from '../../package.json';
 
 declare global { interface Window { __lab?: MarblingEngine } }
 
-const toolNames = { drop: '滴下', stroke: '変形ペン', flow: '流体ペン', pan: '移動' };
 const INK_STORAGE = 'msl.ink-profiles.v1';
 
 function loadInkProfiles(): Record<string, InkMaterial> {
@@ -38,7 +43,14 @@ export function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const cursorRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<MarblingEngine | null>(null);
-  const helpRef = useRef<HTMLDialogElement>(null);
+  const [sheet, setSheet] = useState<'colors' | 'settings' | 'export' | 'help' | null>(null);
+  const sheetRef = useRef(sheet);
+  sheetRef.current = sheet;
+  const openColors = useCallback(() => setSheet('colors'), []);
+  const openSettings = useCallback(() => setSheet('settings'), []);
+  const openHelp = useCallback(() => setSheet('help'), []);
+  const [exporting, setExporting] = useState(false);
+  const [exportMessage, setExportMessage] = useState('');
   const [color, setColor] = useState(defaults.activeColor);
   const [base, setBase] = useState(defaults.baseColor);
   const [radius, setRadius] = useState(defaults.dropRadius);
@@ -90,7 +102,7 @@ export function App() {
   settingsRef.current = { tool, color, radius, duration, brushRadius, strength, persistence, dropSpacing, ink, waterFade };
   const baseRef = useRef(base);
   baseRef.current = base;
-  const busy = status.isAnimating || status.isStroking || status.contextLost || !ready;
+  const busy = status.isAnimating || status.isStroking || status.contextLost || !ready || exporting;
 
   useEffect(() => {
     const canvas = canvasRef.current!;
@@ -110,7 +122,7 @@ export function App() {
       setError(String(err));
       return;
     }
-    const detach = attachPointerController(canvas, engine, () => settingsRef.current, setView, setNote, () => cropModeRef.current);
+    const detach = attachPointerController(canvas, engine, () => settingsRef.current, setView, setNote, () => cropModeRef.current || sheetRef.current !== null);
     const resize = new ResizeObserver(([entry]) => {
       if (engine.status.contextLost) return;
       const size = Math.max(1, Math.round(entry.contentRect.width * Math.min(devicePixelRatio, 2)));
@@ -147,7 +159,7 @@ export function App() {
   }
 
   function clear() {
-    if (confirm('水面を選択した背景色へ戻しますか？ Undoで元に戻せます。')) {
+    if (confirm('水面を選択した背景色へ戻しますか？ 元に戻す（↶）で取り消せます。')) {
       engineRef.current?.clear(base);
       setNote('背景色へ戻しました。Undoで直前の水面に戻せます。');
     }
@@ -173,10 +185,12 @@ export function App() {
   async function save() {
     const engine = engineRef.current;
     if (!engine || busy) return;
+    setExporting(true);
     try {
       downloadPng(await exportPng(engine.renderer.pixels(), resolution, engine.renderer.background));
+      setExportMessage('PNG画像を保存しました。');
       setNote(`${resolution} × ${resolution} のPNGを書き出しました。表示のズームやUIは含みません。`);
-    } catch (err) { setError(String(err)); }
+    } catch (err) { setError(String(err)); } finally { setExporting(false); }
   }
 
   function toggleCrop() {
@@ -213,42 +227,30 @@ export function App() {
   async function saveCrop() {
     const engine = engineRef.current;
     if (!engine || busy) return;
+    setExporting(true);
     try {
       downloadPng(await exportCropPng(engine.renderer.pixels(), resolution, crop, outputWidth, outputHeight, engine.renderer.background), 'marbling-crop');
       setNote(`${outputWidth} × ${outputHeight}px の切り抜きPNGを書き出しました。選択範囲だけを元の色で出力します。`);
-    } catch (err) { setError(String(err)); }
+    } catch (err) { setError(String(err)); } finally { setExporting(false); }
   }
 
   return <div className="app">
     <header className="topbar">
-      <div className="brand"><span className="brand-mark">◉</span><div><h1>Marbling Surface Lab</h1><span className="eyebrow">色流しの実験室 / v{version}</span></div></div>
+      <div className="brand"><h1>MSL</h1><div><span>MARBLING SURFACE LAB</span><small>色流しの実験室 · v{version}</small></div></div>
       <nav className="actions" aria-label="編集操作">
-        <button aria-label="Undo" title="Undo · Ctrl / Cmd + Z" disabled={busy || !status.canUndo} onClick={() => engineRef.current?.undo()}>↶ <span>Undo</span></button>
-        <button aria-label="Redo" title="Redo · Ctrl / Cmd + Shift + Z" disabled={busy || !status.canRedo} onClick={() => engineRef.current?.redo()}>↷ <span>Redo</span></button>
-        <button disabled={busy} onClick={clear}>全消去</button>
-        <button disabled={busy} onClick={save}>PNG保存</button>
-        <button aria-pressed={cropMode} disabled={busy} onClick={toggleCrop}>{cropMode ? '切り抜き終了' : '切り抜き'}</button>
-        <button aria-label="簡易ヘルプ" onClick={() => helpRef.current?.showModal()}>?</button>
+        <button className="icon-button" aria-label="Undo" title="元に戻す · Ctrl / Cmd + Z" disabled={busy || !status.canUndo} onClick={() => engineRef.current?.undo()}>↶</button>
+        <button className="icon-button" aria-label="Redo" title="やり直す · Ctrl / Cmd + Shift + Z" disabled={busy || !status.canRedo} onClick={() => engineRef.current?.redo()}>↷</button>
+        <button className="primary icon-button" aria-label="作品を書き出す" title="PNG保存・切り抜き" aria-haspopup="dialog" disabled={busy} onClick={() => { setExportMessage(''); setSheet('export'); }}>⤓</button>
       </nav>
-      <button className="primary" disabled={busy} onClick={demo}>▶ AT-03 デモを再生</button>
     </header>
     <main className="workspace">
-      <aside className="tools"><span className="eyebrow">TOOLS</span>
-        {(['drop', 'stroke', 'flow', 'pan'] as const).map((name, index) => <button key={name} className={`tool ${tool === name ? 'selected' : ''}`} aria-pressed={tool === name} onClick={() => {
-          setTool(name);
-          setNote(name === 'flow' ? '流体ペン：色の境界を横切るようにドラッグ。余韻で流れの続く時間を調整できます。'
-            : name === 'stroke' ? '変形ペン：水面をつかんで長く引き延ばせます。半径と強度を調整してみてください。'
-            : name === 'drop' ? 'タップで一滴。押し続けるとその場で広がり、なぞると連続滴下します。' : 'ドラッグで移動、ホイール・ピンチで拡大縮小。');
-        }}><span>{['◉', '〰', '≈', '✥'][index]}</span>{toolNames[name]}</button>)}
-        <div className="tool-note">色を落とす。<br />水面が動く。</div>
-      </aside>
       <section className="surface-area" aria-label="水面">
-        <div className="surface-heading"><span>01 / SURFACE</span><span>{resolution} × {resolution} · WebGL2</span></div>
+        <div className="surface-heading"><span>{cropMode ? '切り抜く範囲を選択' : '水面キャンバス'}</span><span>{resolution} px · {Math.round(view.zoom * 100)}%</span></div>
         <div className={`canvas-frame tool-${tool} ${cropMode ? 'tool-crop' : ''}`}>
-          <canvas ref={canvasRef} tabIndex={0} aria-label="マーブリング水面"
+          <canvas ref={canvasRef} tabIndex={0} aria-label="マーブリング水面" aria-describedby="canvas-instructions"
             onPointerMove={(event) => {
               const cursor = cursorRef.current!;
-              if (cropMode || tool === 'pan') { cursor.style.display = 'none'; return; }
+              if (cropMode || tool === 'pan' || event.pointerType === 'touch') { cursor.style.display = 'none'; return; }
               const rect = event.currentTarget.getBoundingClientRect();
               const diameter = 2 * (tool === 'drop' ? effectiveRadius : brushRadius) * view.zoom * rect.width / 1024;
               Object.assign(cursor.style, { display: 'block', width: `${diameter}px`, height: `${diameter}px`,
@@ -259,58 +261,37 @@ export function App() {
           <div ref={cursorRef} className="brush-cursor" aria-hidden="true" />
           {cropMode && !status.contextLost && <CropOverlay crop={crop} aspect={cropAspect} onChange={setCrop} />}
         </div>
-        {cropMode && <div className="crop-toolbar" role="region" aria-label="切り抜き設定">
-          <div className="crop-ratios"><span className="eyebrow">RATIO</span>
-            {CROP_ASPECTS.map((item) => <button key={item.id} className={cropAspect === item.id ? 'selected' : ''}
-              aria-pressed={cropAspect === item.id} onClick={() => changeAspect(item.id)}>{item.label}</button>)}
-          </div>
-          <div className="crop-fields">
-            {(['x', 'y', 'width', 'height'] as const).map((key) => <label key={key} className="crop-field">
-              <span>{key === 'x' ? 'X' : key === 'y' ? 'Y' : key === 'width' ? '幅' : '高さ'}</span>
-              <input type="number" min={0} max={1024} step={1} value={Math.round(crop[key])}
-                aria-label={`切り抜き${key === 'x' ? 'X' : key === 'y' ? 'Y' : key === 'width' ? '幅' : '高さ'}`}
-                onChange={(event) => setCropField(key, Number(event.target.value))} />
-            </label>)}
-            <label className="crop-field"><span>出力幅</span>
-              <input type="number" min={64} max={2048} step={32} value={cropOutputWidth}
-                aria-label="出力幅" onChange={(event) => setCropOutputWidth(Number(event.target.value))} />
-              <em>px</em>
-            </label>
-            <span className="crop-output">{outputWidth} × {outputHeight}px</span>
-          </div>
-          <div className="crop-actions">
-            <button className="primary" onClick={saveCrop}>切り抜きPNG</button>
-            <button onClick={toggleCrop}>閉じる</button>
-          </div>
-        </div>}
-        <div className="view-controls"><button aria-label="縮小" disabled={!ready || status.contextLost || cropMode} onClick={() => zoomBy(0.8)}>−</button><button aria-label="表示をフィット" disabled={!ready || status.contextLost || cropMode} onClick={fit}>{Math.round(view.zoom * 100)}% · FIT</button><button aria-label="拡大" disabled={!ready || status.contextLost || cropMode} onClick={() => zoomBy(1.25)}>＋</button><span>ホイール / ピンチで拡大</span></div>
-        <p className="surface-caption" aria-live="polite"><span className="live-dot" />{note}</p>
+        <div className="view-controls"><button aria-label="縮小" disabled={!ready || status.contextLost || cropMode} onClick={() => zoomBy(0.8)}>−</button><button aria-label="表示をフィット" disabled={!ready || status.contextLost || cropMode} onClick={fit}>{Math.round(view.zoom * 100)}% · 全体表示</button><button aria-label="拡大" disabled={!ready || status.contextLost || cropMode} onClick={() => zoomBy(1.25)}>＋</button></div>
+        <p id="canvas-instructions" className="surface-caption" aria-live="polite">{note}</p>
         {status.isFlowing && <button className="stop-flow" onClick={() => engineRef.current?.settleFlow()}>流れを止めて確定</button>}
         {error && <div role="alert" className="error">{error}</div>}
       </section>
-      <SettingsPanel {...{ color, base, radius, duration, brushRadius, strength, resolution, tool, persistence, setPersistence, dropSpacing, setDropSpacing, ink, setInk: changeInk, resetInk, effectiveRadius, effectiveDuration, waterFade, setWaterFade, setColor, setBase, setRadius, setDuration, setBrushRadius, setStrength, clear }} disabled={busy}
-        setResolution={(value) => {
-          if (!confirm('解像度を変更すると、新しい水面になり作品と履歴が消えます。続けますか？')) return;
-          setResolution(value);
-          setNote(`${value}pxの新しい水面を作成しました。半径と座標は1024基準です。`);
-        }} />
+      <div className="control-area">
+        {cropMode ? <CropControls {...{ cropAspect, changeAspect, crop, setCropField, cropOutputWidth, setCropOutputWidth, outputWidth, outputHeight, saveCrop, toggleCrop }} disabled={busy} /> :
+          <QuickControls {...{ tool, color, radius, brushRadius, strength, persistence, dropSpacing, setRadius, setBrushRadius, setStrength, setPersistence, setDropSpacing, openColors, openSettings, openHelp }} />}
+        <ToolDock tool={tool} disabled={cropMode || status.isPressing === true || (status.isStroking && !status.isFlowing)} onChange={(next) => { setTool(next); setNote(toolHints[next]); }} />
+      </div>
     </main>
-    <footer><span><span className="live-dot" />{status.contextLost ? '復帰待ち' : status.isPressing ? 'インク加圧中' : status.isFlowing ? '流体計算中' : status.isAnimating ? '広がり中' : status.isStroking ? '変形中' : 'READY'} {status.queuedDrops > 0 && `· 待機 ${status.queuedDrops}/10`}</span><span>{Math.round(view.zoom * 100)}% <i />{toolNames[tool]}<i />{status.operations} 操作 {import.meta.env.DEV && <><i />{status.fps || '—'} fps</>}</span><span>LOCAL ONLY · 独立したアートツール</span></footer>
-    <dialog ref={helpRef} className="help-dialog">
-      <h2>水面を、動かしてみる。</h2>
-      <p>滴下：クリック・タップでインクを投入。押し続けると、その場で同じ色の滴がさらに広がります。新しい円の外側では、背景を含む旧水面全体を逆写像で押し出します。</p>
-      <p>水で薄める：滴下設定の「外側を水で薄める」をオンにすると、滴の縁ほど透明度が上がり、下の水色が透けます。色のRGBは混ぜず、アルファだけを変えるため、輪郭の色ラベルは保たれます。押し続けて広げた場合も同じです。</p>
-      <p>インクの物性：色ごとに粘度と表面張力を保存できます。粘度が高い色はゆっくり広がり、表面張力が低い色（界面活性剤が多い色）は同じ半径設定でも大きく広がります。色の境界だけを特別に止める処理は使わず、材料差とJaffer逆写像だけで押し出し形状を作ります。</p>
-      <p>連続滴下：滴下ツールでなぞると、指の軌跡に沿って一定間隔で滴を落とします。「連続滴下の間隔」で密度を調整。即時描画で指に追従し、軌跡全体がUndoの1操作になります。</p>
-      <p>変形ペン：ドラッグで色の境界を引き延ばします。1本のドラッグが1操作。キャンセル時は元に戻ります。</p>
-      <p>流体ペン：64×64の流速・圧力場を計算して水面全体を移流します。指を離した後の余韻も含めて1操作。流れが止まるとUndo・PNG保存が使えます。「流れを止めて確定」で途中停止できます。</p>
-      <p>色：4種類のパレットと自由なHEX・カラーピッカー。「この色を保存」で最大24色をこのブラウザに保存できます。</p>
-      <p>移動：移動ツールまたはSpace＋ドラッグ。ホイール・2本指ピンチで拡大縮小します。</p>
-      <p>Undo：Ctrl / Cmd＋Z。Redo：Ctrl / Cmd＋Shift＋Z。最大50操作。全消去もUndoできます。</p>
-      <p>AT-03：青背景に紫130px、赤80pxを順に投入。赤と紫の間に残る青と、紫の変形を観察してください。</p>
-      <p>切り抜き：上部の「切り抜き」で範囲を表示。枠内をドラッグして移動、四隅でリサイズ。自由・1:1・4:3・3:4・16:9・9:16の比率を選び、出力幅を指定してPNG保存します。数値でも範囲を指定できます。</p>
-      <p>作品は自動保存されません。PNG保存で水面だけを書き出せます。DWSの公式・提携サービスではありません。</p>
-      <form method="dialog"><button className="primary">閉じる</button></form>
-    </dialog>
+    <footer><span>{status.contextLost ? '描画の復帰待ち' : status.isPressing ? '滴を広げています' : status.isFlowing ? '水面が流れています' : status.isAnimating ? '滴が広がっています' : status.isStroking ? '水面を変形しています' : '描画できます'} {status.queuedDrops > 0 && `· 待機 ${status.queuedDrops}/10`}</span><span>{status.operations} 操作 · 作品は自動保存されません</span></footer>
+    <BottomSheet title={sheet === 'colors' ? 'カラーを選択' : sheet === 'settings' ? `${toolNames[tool]}の詳細設定` : sheet === 'export' ? '作品を書き出す' : '使い方'} open={sheet !== null} onClose={() => setSheet(null)}>
+      {sheet === 'colors' && <><ColorPicker color={color} onChange={setColor} /><button className="primary wide" onClick={() => setSheet(null)}>この色を使う</button></>}
+      {sheet === 'settings' && <>
+        <SettingsPanel {...{ base, duration, brushRadius, strength, resolution, tool, persistence, setPersistence, dropSpacing, setDropSpacing, ink, setInk: changeInk, resetInk, effectiveRadius, effectiveDuration, waterFade, setWaterFade, setBase, setDuration, setBrushRadius, setStrength, clear }} disabled={busy}
+          setResolution={(value) => {
+            if (value === resolution || !confirm('解像度を変更すると、新しい水面になり作品と履歴が消えます。続けますか？')) return;
+            setResolution(value);
+            setSheet(null);
+            setNote(`${value}pxの新しい水面を作成しました。`);
+          }} />
+        <div className="settings-utilities"><button disabled={busy} onClick={clear}>全消去</button><button disabled={busy} onClick={() => { setSheet(null); void demo(); }}>▶ AT-03 デモを再生</button></div>
+      </>}
+      {sheet === 'export' && <div className="export-options">
+        <button disabled={busy} aria-label="PNG保存" onClick={save}><span aria-hidden="true">▣</span><div>PNGで保存<small>{resolution} × {resolution} px · 水面全体</small></div></button>
+        <button disabled={busy} aria-label="切り抜き" onClick={() => { setSheet(null); toggleCrop(); }}><span aria-hidden="true">▧</span><div>切り抜きPNG<small>範囲と縦横比を選んで保存</small></div></button>
+        <p className="export-feedback" role="status">{exporting ? '画像を保存しています…' : exportMessage}</p>
+        <p className="setting-hint">作品は自動保存されません。編集が終わったら画像を保存してください。表示の拡大率や操作ボタンは画像に含まれません。</p>
+      </div>}
+      {sheet === 'help' && <EditorHelp />}
+    </BottomSheet>
   </div>;
 }

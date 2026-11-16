@@ -1,0 +1,65 @@
+{
+  "environment": "Linux, Chromium, software WebGL2 / SwiftShader; not a physical-device benchmark",
+  "method": "Existing AT-11 test; original HEAD and renewed UI, same dependencies and Chromium/SwiftShader on this machine. One run each; not an INP or real-device benchmark.",
+  "before": {
+    "measuredAt": "2026-11-16T03:35:33.738Z",
+    "environment": "Linux, Chromium, software WebGL2 / SwiftShader; not a physical-device benchmark",
+    "resolution": 1024,
+    "count": 100,
+    "retained": 50,
+    "memory": 20971520,
+    "batchMs": [
+      190.70000000018626,
+      202.3999999994412,
+      460.70000000018626,
+      601.2999999998137,
+      585.5
+    ],
+    "previewFps": 61,
+    "undoToBaseline": true,
+    "redoExact": true,
+    "before": {
+      "live": 2,
+      "created": 4,
+      "deleted": 2
+    },
+    "after": {
+      "live": 2,
+      "created": 4,
+      "deleted": 2
+    },
+    "error": 0,
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/159.0.8154.6 Safari/537.36"
+  },
+  "after": {
+    "measuredAt": "2026-11-16T03:36:58.619Z",
+    "environment": "Linux, Chromium, software WebGL2 / SwiftShader; not a physical-device benchmark",
+    "resolution": 1024,
+    "count": 100,
+    "retained": 50,
+    "memory": 20971520,
+    "batchMs": [
+      159,
+      180.29999999981374,
+      437.70000000018626,
+      565.8999999994412,
+      568.2000000001863
+    ],
+    "previewFps": 62,
+    "undoToBaseline": true,
+    "redoExact": true,
+    "before": {
+      "live": 2,
+      "created": 4,
+      "deleted": 2
+    },
+    "after": {
+      "live": 2,
+      "created": 4,
+      "deleted": 2
+    },
+    "error": 0,
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/159.0.8154.6 Safari/537.36"
+  },
+  "baselineCommit": "b620358b6e23fd77bfb9e945df1690c05da2c5dd"
+}

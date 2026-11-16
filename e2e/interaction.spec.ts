@@ -1,8 +1,10 @@
+import { openSettings, openColors, closeSheet, setSpreadDuration } from './editorHelpers';
 import { expect, test } from '@playwright/test';
 import { writeFile } from 'node:fs/promises';
 
 test('palette selection, arbitrary HEX, and saved colors survive reload', async ({ page }) => {
   await page.goto('./');
+  await openColors(page);
   await expect(page.getByRole('region', { name: 'カラーパレット' }).getByRole('button', { name: /^色 / })).toHaveCount(24);
   await page.getByLabel('パレット', { exact: true }).selectOption('パステル');
   await page.getByRole('button', { name: '色 #A8DEC2', exact: true }).click();
@@ -10,8 +12,10 @@ test('palette selection, arbitrary HEX, and saved colors survive reload', async 
   await page.getByLabel('インク色 HEX').fill('#12AB34');
   await page.getByRole('button', { name: '＋ この色を保存', exact: true }).click();
   await page.reload();
+  await openColors(page);
   await page.getByRole('button', { name: '保存色 #12AB34', exact: true }).click();
-  await page.getByLabel('広がり時間', { exact: true }).fill('0');
+  await closeSheet(page);
+  await setSpreadDuration(page);
   await page.locator('canvas').click();
   const pixel = await page.evaluate(() => [...window.__lab!.renderer.pixels().slice((512 * 1024 + 512) * 4, (512 * 1024 + 512) * 4 + 3)]);
   expect(pixel).toEqual([18, 171, 52]);
@@ -173,7 +177,9 @@ test('touch continuous drops, pinch rollback and fluid-tool wiring', async ({ br
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   expect(await page.evaluate(() => window.__lab!.status.operations)).toBe(1);
   await page.getByRole('button', { name: '流体ペン', exact: false }).click();
-  await page.getByLabel('余韻', { exact: true }).fill('0.2');
+  await openSettings(page);
+  await page.getByLabel('流れが続く時間（詳細）', { exact: true }).fill('0.2');
+  await closeSheet(page);
   await canvas.scrollIntoViewIfNeeded();
   const box = (await canvas.boundingBox())!;
   const start = { x: box.x + box.width * 0.4, y: box.y + box.height * 0.5, id: 1 };

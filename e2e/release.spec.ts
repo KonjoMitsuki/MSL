@@ -1,3 +1,4 @@
+import { setSpreadDuration } from './editorHelpers';
 import { expect, test } from '@playwright/test';
 
 test('press-and-hold grows the same drop, short taps finish, cancel leaves no history', async ({ page }) => {
@@ -105,7 +106,7 @@ test('surface tension changes spread and displacement without producing mixed co
 test('real mouse hold expands beyond the chosen radius, while a tap keeps the chosen size', async ({ page }) => {
   await page.goto('./?resolution=512');
   await page.waitForFunction(() => !!window.__lab);
-  await page.getByLabel('広がり時間', { exact: true }).fill('0');
+  await setSpreadDuration(page);
   await page.getByLabel('滴の半径', { exact: true }).fill('40');
   const canvas = page.locator('canvas');
   const box = (await canvas.boundingBox())!;

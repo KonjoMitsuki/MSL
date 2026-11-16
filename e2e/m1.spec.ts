@@ -1,3 +1,4 @@
+import { openSettings } from './editorHelpers';
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
@@ -55,6 +56,7 @@ test('M1 GPU: AT-01, 02, 04, 07 and exact palette', async ({ page }) => {
 
 test('AT-03 fixed scenario: continuous blue and displaced purple, with visual evidence', async ({ page }) => {
   await ready(page);
+  await openSettings(page);
   await page.getByRole('button', { name: 'AT-03 デモを再生' }).click();
   await expect(page.getByText('AT-03：赤の左に青', { exact: false })).toBeVisible();
   const result = await page.evaluate(() => {

@@ -1,3 +1,4 @@
+import { openSettings, openExport, setSpreadDuration } from './editorHelpers';
 import { test, expect, type Page } from '@playwright/test';
 import { readFile, writeFile } from 'node:fs/promises';
 
@@ -76,7 +77,7 @@ test('stroke image is independent of event density along the same path', async (
 
 test('AT-09/12: mouse mapping at zoom, resize persistence, UI keyboard history and pointer cancellation', async ({ page }) => {
   await ready(page);
-  await page.getByLabel('広がり時間', { exact: true }).fill('0');
+  await setSpreadDuration(page);
   const canvas = page.locator('canvas');
   await page.getByRole('button', { name: '拡大', exact: true }).click();
   await canvas.scrollIntoViewIfNeeded();
@@ -113,6 +114,7 @@ test('AT-09/12: mouse mapping at zoom, resize persistence, UI keyboard history a
   expect(await hash()).toBe(before);
   expect(await page.evaluate(() => window.__lab!.status.operations)).toBe(1);
   page.once('dialog', (dialog) => dialog.dismiss());
+  await openSettings(page);
   await page.getByRole('button', { name: '全消去', exact: true }).click();
   expect(await hash()).toBe(before);
 });
@@ -121,7 +123,7 @@ test('AT-09: real touch tap, two-finger pinch with no stray ink, touch stroke an
   const context = await browser.newContext({ baseURL: 'http://127.0.0.1:5173/MSL/', viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   const page = await context.newPage();
   await ready(page);
-  await page.getByLabel('広がり時間', { exact: true }).fill('0');
+  await setSpreadDuration(page);
   const canvas = page.locator('canvas');
   await canvas.scrollIntoViewIfNeeded();
   const rect = (await canvas.boundingBox())!;
@@ -157,6 +159,7 @@ test('AT-10: UI PNG download is the exact unzoomed simulation, at 512px', async 
   });
   await page.getByRole('button', { name: '拡大', exact: true }).click();
   const downloadPromise = page.waitForEvent('download');
+  await openExport(page);
   await page.getByRole('button', { name: 'PNG保存', exact: true }).click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toMatch(/\.png$/);
@@ -207,7 +210,7 @@ test('WebGL2 unavailable shows an actionable error', async ({ page }) => {
   });
   await page.goto('./');
   await expect(page.getByRole('alert')).toContainText('WebGL2が利用できません');
-  await expect(page.getByRole('button', { name: 'PNG保存' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '作品を書き出す' })).toBeDisabled();
 });
 
 test('AT-11: 100 drops, bounded GPU resources/history, replay beyond eviction and measured preview', async ({ page }) => {

@@ -158,8 +158,12 @@ export function attachPointerController(
     setView({ zoom, pan: { x: x - (x - v.pan.x) * ratio, y: y - (y - v.pan.y) * ratio } });
   };
   const keydown = (event: KeyboardEvent) => {
+    if (document.querySelector('dialog[open]')) return;
     if (event.target instanceof HTMLElement && /INPUT|TEXTAREA|SELECT/.test(event.target.tagName)) return;
-    if (event.code === 'Space') { space = true; event.preventDefault(); }
+    if (event.target instanceof HTMLElement && event.target.isContentEditable) return;
+    if (event.code === 'Space' && !locked() && !(event.target instanceof HTMLElement && event.target.closest('button, summary'))) {
+      space = true; event.preventDefault();
+    }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
       event.preventDefault();
       if (event.shiftKey) engine.redo(); else engine.undo();

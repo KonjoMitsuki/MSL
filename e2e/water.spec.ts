@@ -1,3 +1,4 @@
+import { openSettings, openExport, closeSheet, setSpreadDuration } from './editorHelpers';
 import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 
@@ -59,12 +60,14 @@ test('the water fade option is optional and PNG export keeps the background opaq
   await page.goto('./?resolution=512');
   await page.waitForFunction(() => !!window.__lab);
   await page.getByLabel('滴の半径', { exact: true }).fill('160');
-  await page.getByLabel('広がり時間', { exact: true }).fill('0');
+  await setSpreadDuration(page);
+  await openSettings(page);
   const checkbox = page.getByLabel('外側を水で薄める');
   await expect(checkbox).not.toBeChecked();
   await checkbox.check();
   await expect(page.getByRole('slider', { name: '薄まりの強さ' })).toBeVisible();
   await page.getByRole('slider', { name: '薄まりの強さ' }).fill('1');
+  await closeSheet(page);
 
   const canvas = page.locator('canvas');
   await canvas.scrollIntoViewIfNeeded();
@@ -86,6 +89,7 @@ test('the water fade option is optional and PNG export keeps the background opaq
   await page.screenshot({ path: 'docs/water-fade.png', fullPage: true });
 
   const downloadPromise = page.waitForEvent('download');
+  await openExport(page);
   await page.getByRole('button', { name: 'PNG保存', exact: true }).click();
   const download = await downloadPromise;
   const bytes = await readFile((await download.path())!);

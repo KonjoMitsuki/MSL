@@ -1,3 +1,4 @@
+import { openExport } from './editorHelpers';
 import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 
@@ -13,6 +14,7 @@ test('crop selection moves without painting, locks aspect, and exports the reque
   });
   expect(await page.evaluate(() => window.__lab!.status.operations)).toBe(2);
 
+  await openExport(page);
   await page.getByRole('button', { name: '切り抜き', exact: true }).click();
   const box = page.getByTestId('crop-box');
   await expect(box).toBeVisible();

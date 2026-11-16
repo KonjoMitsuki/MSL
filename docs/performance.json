@@ -1,16 +1,16 @@
 {
-  "measuredAt": "2026-11-16T02:57:06.689Z",
+  "measuredAt": "2026-11-16T03:49:54.376Z",
   "environment": "Linux, Chromium, software WebGL2 / SwiftShader; not a physical-device benchmark",
   "resolution": 1024,
   "count": 100,
   "retained": 50,
   "memory": 20971520,
   "batchMs": [
-    142.29999999981374,
-    168.10000000009313,
-    435.89999999990687,
-    599.3999999999069,
-    580.3000000002794
+    118.79999999981374,
+    159.79999999981374,
+    432.29999999981374,
+    598.1000000005588,
+    565.5
   ],
   "previewFps": 61,
   "undoToBaseline": true,

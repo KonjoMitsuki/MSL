@@ -1,14 +1,17 @@
+import { openSettings, closeSheet } from './editorHelpers';
 import { expect, test } from '@playwright/test';
 
 test('per-colour ink material changes the drop and survives reload', async ({ page }) => {
   await page.goto('./?resolution=512');
   await page.waitForFunction(() => !!window.__lab);
 
+  await openSettings(page);
   await page.getByLabel('インク粘度', { exact: true }).fill('2.5');
   await page.getByLabel('表面張力', { exact: true }).fill('1.4');
   await expect(page.getByText(/実効半径 47\.3px/)).toBeVisible();
   await expect(page.getByText(/実効広がり時間 1331ms/)).toBeVisible();
 
+  await closeSheet(page);
   const canvas = page.locator('canvas');
   await canvas.scrollIntoViewIfNeeded();
   const box = (await canvas.boundingBox())!;
@@ -25,6 +28,7 @@ test('per-colour ink material changes the drop and survives reload', async ({ pa
 
   await page.reload();
   await page.waitForFunction(() => !!window.__lab);
+  await openSettings(page);
   await expect(page.getByLabel('インク粘度', { exact: true })).toHaveValue('2.5');
   await expect(page.getByLabel('表面張力', { exact: true })).toHaveValue('1.4');
 
