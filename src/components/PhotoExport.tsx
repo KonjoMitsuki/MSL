@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { canSharePng, downloadPng } from '../export/exportPng';
+import { canSharePng } from '../export/exportPng';
 
 export type PhotoExportImage = { file: File; width: number; height: number };
 
@@ -43,10 +43,6 @@ export function PhotoExport({ image, onBack }: { image: PhotoExportImage; onBack
     {canShare && <button className="primary" disabled={sharing} aria-describedby={hintId} onClick={share}>{sharing ? '共有メニューを開いています…' : '共有メニューを開く'}</button>}
     {canShare && <p className="setting-hint">画像の長押しからも保存できます。</p>}
     <p className="export-feedback" role="status">{message}</p>
-    <button disabled={sharing} onClick={() => {
-      downloadPng(image.file);
-      setMessage('PNGのダウンロードを開始しました。iPhoneでは「ファイル」に保存されます。');
-    }}>PNGをファイルに保存</button>
-    <button disabled={sharing} onClick={onBack}>書き出し方法に戻る</button>
+    <button disabled={sharing} onClick={onBack}>戻る</button>
   </div>;
 }

@@ -1,5 +1,4 @@
-import { openSettings, openExport, closeSheet, setSpreadDuration } from './editorHelpers';
-import { readFile } from 'node:fs/promises';
+import { photoPreviewPng, openSettings, openExport, closeSheet, setSpreadDuration } from './editorHelpers';
 import { expect, test } from '@playwright/test';
 
 test('water fade lowers alpha only at the rim, keeps exact RGB labels, and shows the water behind', async ({ page }) => {
@@ -88,11 +87,9 @@ test('the water fade option is optional and PNG export keeps the background opaq
   expect(raw.edge[3]).toBeLessThan(80);
   await page.screenshot({ path: 'docs/water-fade.png', fullPage: true });
 
-  const downloadPromise = page.waitForEvent('download');
   await openExport(page);
-  await page.getByRole('button', { name: 'PNG保存', exact: true }).click();
-  const download = await downloadPromise;
-  const bytes = await readFile((await download.path())!);
+  await page.getByRole('button', { name: '写真に保存' }).click();
+  const bytes = await photoPreviewPng(page);
   const png = await page.evaluate(async (base64) => {
     const blob = await (await fetch(`data:image/png;base64,${base64}`)).blob();
     const bitmap = await createImageBitmap(blob);

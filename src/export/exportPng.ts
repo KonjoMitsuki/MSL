@@ -79,13 +79,3 @@ export function canSharePng(file: File): boolean {
       && navigator.canShare({ files: [file] });
   } catch { return false; }
 }
-
-export function downloadPng(blob: Blob, prefix = 'marbling') {
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = blob instanceof File ? blob.name : pngFilename(prefix);
-  anchor.click();
-  // Retain long enough for mobile browsers to consume the download.
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
-}

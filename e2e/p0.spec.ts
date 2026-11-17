@@ -1,6 +1,6 @@
-import { openSettings, openExport, setSpreadDuration } from './editorHelpers';
+import { photoPreviewPng, openSettings, openExport, setSpreadDuration } from './editorHelpers';
 import { test, expect, type Page } from '@playwright/test';
-import { readFile, writeFile } from 'node:fs/promises';
+import { writeFile } from 'node:fs/promises';
 
 async function ready(page: Page, url = './') {
   await page.goto(url);
@@ -152,18 +152,15 @@ test('AT-09: real touch tap, two-finger pinch with no stray ink, touch stroke an
   await context.close();
 });
 
-test('AT-10: UI PNG download is the exact unzoomed simulation, at 512px', async ({ page }) => {
+test('AT-10: UI photo PNG is the exact unzoomed simulation, at 512px', async ({ page }) => {
   await ready(page, './?resolution=512');
   await page.evaluate(() => {
     window.__lab!.enqueue({ type: 'drop', id: 'asymmetric', center: { x: 200, y: 300 }, radius: 60, color: '#F02045', durationMs: 0 });
   });
   await page.getByRole('button', { name: '拡大', exact: true }).click();
-  const downloadPromise = page.waitForEvent('download');
   await openExport(page);
-  await page.getByRole('button', { name: 'PNG保存', exact: true }).click();
-  const download = await downloadPromise;
-  expect(download.suggestedFilename()).toMatch(/\.png$/);
-  const bytes = await readFile((await download.path())!);
+  await page.getByRole('button', { name: '写真に保存' }).click();
+  const bytes = await photoPreviewPng(page);
   expect([...bytes.subarray(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
   const result = await page.evaluate(async (base64) => {
     const blob = await (await fetch(`data:image/png;base64,${base64}`)).blob();

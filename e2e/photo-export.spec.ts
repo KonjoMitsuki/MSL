@@ -1,4 +1,3 @@
-import { readFile } from 'node:fs/promises';
 import { expect, test, type Page } from '@playwright/test';
 import { closeSheet, openExport } from './editorHelpers';
 
@@ -32,7 +31,8 @@ async function openPhoto(page: Page) {
   await page.goto('./?resolution=512');
   await page.waitForFunction(() => !!window.__lab);
   await openExport(page);
-  await page.getByRole('button', { name: '写真に保存・共有' }).click();
+  await expect(page.getByRole('button', { name: /ファイル|ダウンロード/ })).toHaveCount(0);
+  await page.getByRole('button', { name: '写真に保存' }).click();
   await expect(page.getByRole('img', { name: '保存する作品のPNG画像' })).toBeVisible();
 }
 
@@ -52,7 +52,8 @@ test('shares a ready PNG on a fresh tap, keeps exact pixels, and releases the pr
     HTMLCanvasElement.prototype.toBlob = function (...args) { setTimeout(() => toBlob.apply(this, args), 250); };
   });
   await openExport(page);
-  await page.getByRole('button', { name: '写真に保存・共有' }).click();
+  await expect(page.getByRole('button', { name: /ファイル|ダウンロード/ })).toHaveCount(0);
+  await page.getByRole('button', { name: '写真に保存' }).click();
   const preview = page.getByRole('img', { name: '保存する作品のPNG画像' });
   await expect(preview).toBeVisible();
   await expect(page.getByRole('heading', { name: '画像を「写真」に保存' })).toBeFocused();
@@ -91,6 +92,8 @@ for (const support of ['missing', 'false', 'throws'] as const) {
   test(`photo preview remains available without file sharing (${support})`, async ({ page }) => {
     await mockShare(page, support);
     await page.setViewportSize({ width: 390, height: 844 });
+    const downloads: string[] = [];
+    page.on('download', (download) => downloads.push(download.suggestedFilename()));
     await openPhoto(page);
     await expect(page.getByRole('button', { name: '共有メニューを開く', exact: true })).toHaveCount(0);
     await expect(page.getByText(/iPhoneでは下の画像を長押し/)).toBeVisible();
@@ -106,20 +109,16 @@ for (const support of ['missing', 'false', 'throws'] as const) {
       for (const [width, height] of [[320, 667], [844, 390], [390, 844]]) {
         await page.setViewportSize({ width, height });
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-        const downloadButton = page.getByRole('button', { name: 'PNGをファイルに保存', exact: true });
-        await downloadButton.scrollIntoViewIfNeeded();
-        await expect(downloadButton).toBeInViewport();
+        const backButton = page.getByRole('button', { name: '戻る', exact: true });
+        await backButton.scrollIntoViewIfNeeded();
+        await expect(backButton).toBeInViewport();
       }
     }
-    const bytes = await preview.evaluate(async (node) => [...new Uint8Array(await (await fetch((node as HTMLImageElement).src)).arrayBuffer())]);
-    const pendingDownload = page.waitForEvent('download');
-    await page.getByRole('button', { name: 'PNGをファイルに保存', exact: true }).click();
-    const download = await pendingDownload;
-    expect([...await readFile((await download.path())!)]).toEqual(bytes);
-    await expect(page.getByRole('dialog').getByRole('status')).toContainText('「ファイル」に保存されます');
+    await expect(page.getByRole('button', { name: /ファイル|ダウンロード|切り抜きPNG/ })).toHaveCount(0);
+    expect(downloads).toEqual([]);
     const url = (await preview.getAttribute('src'))!;
-    await page.getByRole('button', { name: '書き出し方法に戻る' }).click();
-    await expect(page.getByRole('button', { name: '写真に保存・共有' })).toBeFocused();
+    await page.getByRole('button', { name: '戻る' }).click();
+    await expect(page.getByRole('button', { name: '写真に保存' })).toBeFocused();
     expect(await page.evaluate((src) => window.__revokedPhotoUrls!.includes(src), url)).toBe(true);
   });
 }
@@ -149,10 +148,11 @@ test('crop photo sharing uses the selected PNG and output dimensions', async ({ 
   await page.goto('./?resolution=512');
   await page.waitForFunction(() => !!window.__lab);
   await openExport(page);
+  await expect(page.getByRole('button', { name: /ファイル|ダウンロード/ })).toHaveCount(0);
   await page.getByRole('button', { name: '切り抜き', exact: true }).click();
   await page.getByRole('button', { name: '16:9', exact: true }).click();
   await page.getByLabel('出力幅').fill('320');
-  await page.getByRole('button', { name: '写真に保存・共有' }).click();
+  await page.getByRole('button', { name: '写真に保存' }).click();
   await expect(page.getByText('320 × 180 px · PNG', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: '共有メニューを開く', exact: true }).click();
   const result = await page.evaluate(async () => {

@@ -10,3 +10,12 @@ export async function setSpreadDuration(page: Page, value = '0') {
   await page.getByLabel('広がり時間', { exact: true }).fill(value);
   await closeSheet(page);
 }
+
+export async function photoPreviewPng(page: Page): Promise<Buffer> {
+  const preview = page.getByRole('img', { name: '保存する作品のPNG画像' });
+  await preview.waitFor({ state: 'visible' });
+  const bytes = await preview.evaluate(async (node) => [...new Uint8Array(
+    await (await fetch((node as HTMLImageElement).src)).arrayBuffer(),
+  )]);
+  return Buffer.from(bytes);
+}

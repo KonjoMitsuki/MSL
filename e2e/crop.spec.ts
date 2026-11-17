@@ -1,5 +1,4 @@
-import { openExport } from './editorHelpers';
-import { readFile } from 'node:fs/promises';
+import { photoPreviewPng, closeSheet, openExport } from './editorHelpers';
 import { expect, test } from '@playwright/test';
 
 test('crop selection moves without painting, locks aspect, and exports the requested pixels and size', async ({ page }) => {
@@ -35,11 +34,8 @@ test('crop selection moves without painting, locks aspect, and exports the reque
   await page.getByLabel('切り抜きY').fill('432');
   await expect(page.locator('.crop-output')).toHaveText('320 × 180px');
 
-  const downloadPromise = page.waitForEvent('download');
-  await page.getByRole('button', { name: '切り抜きPNG' }).click();
-  const download = await downloadPromise;
-  expect(download.suggestedFilename()).toMatch(/^marbling-crop-.*\.png$/);
-  const bytes = await readFile((await download.path())!);
+  await page.getByRole('button', { name: '写真に保存' }).click();
+  const bytes = await photoPreviewPng(page);
   expect(bytes.subarray(1, 4).toString()).toBe('PNG');
   expect(bytes.readUInt32BE(16)).toBe(320);
   expect(bytes.readUInt32BE(20)).toBe(180);
@@ -61,6 +57,7 @@ test('crop selection moves without painting, locks aspect, and exports the reque
   expect(close(samples.blue, [39, 139, 236])).toBe(true);
   expect(close(samples.red, [240, 32, 69])).toBe(true);
   expect(await page.evaluate(() => window.__lab!.status.operations)).toBe(2);
+  await closeSheet(page);
   await page.screenshot({ path: 'docs/crop-desktop.png', fullPage: true });
 
   await page.setViewportSize({ width: 390, height: 844 });
