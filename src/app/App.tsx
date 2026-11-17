@@ -11,9 +11,10 @@ import { QuickControls } from '../components/QuickControls';
 import { ToolDock, toolNames, toolHints } from '../components/ToolDock';
 import { CropControls } from '../components/CropControls';
 import { EditorHelp } from '../components/EditorHelp';
+import { PhotoExport, type PhotoExportImage } from '../components/PhotoExport';
 import { CropOverlay } from '../components/CropOverlay';
 import { aspectRatio, clampCrop, cropOutputHeight, withAspect, type CropAspect, type CropRect } from '../export/crop';
-import { downloadPng, exportCropPng, exportPng } from '../export/exportPng';
+import { createPngFile, downloadPng, exportCropPng, exportPng } from '../export/exportPng';
 import { version } from '../../package.json';
 
 declare global { interface Window { __lab?: MarblingEngine } }
@@ -51,6 +52,8 @@ export function App() {
   const openHelp = useCallback(() => { setSampling(false); setSheet('help'); }, []);
   const [exporting, setExporting] = useState(false);
   const [exportMessage, setExportMessage] = useState('');
+  const [photoExport, setPhotoExport] = useState<PhotoExportImage | null>(null);
+  const photoButtonRef = useRef<HTMLButtonElement>(null);
   const [color, setColor] = useState(defaults.activeColor);
   const [sampling, setSampling] = useState(false);
   const samplingRef = useRef(false);
@@ -227,13 +230,19 @@ export function App() {
     setNote('AT-03：赤の左に青、その左に変形した紫。もう一滴で、水面全体の移動を観察できます。');
   }
 
-  async function save() {
+  async function save(destination: 'photo' | 'download') {
     const engine = engineRef.current;
     if (!engine || busy) return;
     setExporting(true);
     try {
-      downloadPng(await exportPng(engine.renderer.pixels(), resolution, engine.renderer.background));
-      setExportMessage('PNG画像を保存しました。');
+      const blob = await exportPng(engine.renderer.pixels(), resolution, engine.renderer.background);
+      if (destination === 'photo') {
+        setPhotoExport({ file: createPngFile(blob), width: resolution, height: resolution });
+        setSheet('export');
+      } else {
+        downloadPng(blob);
+        setExportMessage('PNGのダウンロードを開始しました。');
+      }
       setNote(`${resolution} × ${resolution} のPNGを書き出しました。表示のズームやUIは含みません。`);
     } catch (err) { setError(String(err)); } finally { setExporting(false); }
   }
@@ -269,12 +278,16 @@ export function App() {
     });
   }
 
-  async function saveCrop() {
+  async function saveCrop(destination: 'photo' | 'download') {
     const engine = engineRef.current;
     if (!engine || busy) return;
     setExporting(true);
     try {
-      downloadPng(await exportCropPng(engine.renderer.pixels(), resolution, crop, outputWidth, outputHeight, engine.renderer.background), 'marbling-crop');
+      const blob = await exportCropPng(engine.renderer.pixels(), resolution, crop, outputWidth, outputHeight, engine.renderer.background);
+      if (destination === 'photo') {
+        setPhotoExport({ file: createPngFile(blob, 'marbling-crop'), width: outputWidth, height: outputHeight });
+        setSheet('export');
+      } else { downloadPng(blob, 'marbling-crop'); }
       setNote(`${outputWidth} × ${outputHeight}px の切り抜きPNGを書き出しました。選択範囲だけを元の色で出力します。`);
     } catch (err) { setError(String(err)); } finally { setExporting(false); }
   }
@@ -285,7 +298,7 @@ export function App() {
       <nav className="actions" aria-label="編集操作">
         <button className="icon-button" aria-label="Undo" title="元に戻す · Ctrl / Cmd + Z" disabled={busy || !status.canUndo} onClick={() => engineRef.current?.undo()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 8 4 12l5 4M4 12h10a6 6 0 0 1 6 6" /></svg></button>
         <button className="icon-button" aria-label="Redo" title="やり直す · Ctrl / Cmd + Shift + Z" disabled={busy || !status.canRedo} onClick={() => engineRef.current?.redo()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 8 5 4-5 4m5-4H10a6 6 0 0 0-6 6" /></svg></button>
-        <button className="primary icon-button" aria-label="作品を書き出す" title="PNG保存・切り抜き" aria-haspopup="dialog" disabled={busy} onClick={() => { setExportMessage(''); setSheet('export'); }}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 17v3h16v-3" /></svg></button>
+        <button className="primary icon-button" aria-label="作品を書き出す" title="写真に保存・PNG保存・切り抜き" aria-haspopup="dialog" disabled={busy} onClick={() => { setExportMessage(''); setPhotoExport(null); setSheet('export'); }}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 17v3h16v-3" /></svg></button>
       </nav>
     </header>
     <main className="workspace">
@@ -338,7 +351,7 @@ export function App() {
       </div>
     </main>
     <footer><span>{status.contextLost ? '描画の復帰待ち' : status.isPressing ? '滴を広げています' : status.isFlowing ? '水面が流れています' : status.isAnimating ? '滴が広がっています' : status.isStroking ? '水面を変形しています' : '描画できます'} {status.queuedDrops > 0 && `· 待機 ${status.queuedDrops}/10`}</span><span>{status.operations} 操作 · 作品は自動保存されません</span></footer>
-    <BottomSheet title={sheet === 'colors' ? 'カラーを選択' : sheet === 'settings' ? `${toolNames[tool]}の詳細設定` : sheet === 'export' ? '作品を書き出す' : '使い方'} open={sheet !== null} onClose={() => setSheet(null)}>
+    <BottomSheet title={sheet === 'colors' ? 'カラーを選択' : sheet === 'settings' ? `${toolNames[tool]}の詳細設定` : sheet === 'export' ? '作品を書き出す' : '使い方'} open={sheet !== null} onClose={() => { setSheet(null); setPhotoExport(null); }}>
       {sheet === 'colors' && <><ColorPicker color={color} onChange={setColor} onSample={startSampling} canSample={!busy} /><button className="primary wide" onClick={() => setSheet(null)}>この色を使う</button></>}
       {sheet === 'settings' && <>
         <SettingsPanel {...{ base, duration, brushRadius, strength, resolution, tool, persistence, setPersistence, dropSpacing, setDropSpacing, ink, setInk: changeInk, resetInk, effectiveRadius, effectiveDuration, waterFade, setWaterFade, setBase, setDuration, setBrushRadius, setStrength, clear }} disabled={busy}
@@ -350,12 +363,16 @@ export function App() {
           }} />
         <div className="settings-utilities"><button disabled={busy} onClick={clear}>全消去</button><button disabled={busy} onClick={() => { setSheet(null); void demo(); }}>▶ AT-03 デモを再生</button></div>
       </>}
-      {sheet === 'export' && <div className="export-options">
-        <button disabled={busy} aria-label="PNG保存" onClick={save}><span aria-hidden="true">▣</span><div>PNGで保存<small>{resolution} × {resolution} px · 水面全体</small></div></button>
+      {sheet === 'export' && (photoExport ? <PhotoExport image={photoExport} onBack={() => {
+        setPhotoExport(null);
+        requestAnimationFrame(() => photoButtonRef.current?.focus());
+      }} /> : <div className="export-options">
+        <button ref={photoButtonRef} disabled={busy} onClick={() => save('photo')}><span aria-hidden="true">▣</span><div>写真に保存・共有<small>iPhoneの「写真」へ保存 · {resolution} × {resolution} px</small></div></button>
+        <button disabled={busy} aria-label="PNG保存" onClick={() => save('download')}><span aria-hidden="true">↓</span><div>PNGをファイルに保存<small>「ファイル」やダウンロードフォルダへ保存</small></div></button>
         <button disabled={busy} aria-label="切り抜き" onClick={() => { setSheet(null); toggleCrop(); }}><span aria-hidden="true">▧</span><div>切り抜きPNG<small>範囲と縦横比を選んで保存</small></div></button>
         <p className="export-feedback" role="status">{exporting ? '画像を保存しています…' : exportMessage}</p>
         <p className="setting-hint">作品は自動保存されません。編集が終わったら画像を保存してください。表示の拡大率や操作ボタンは画像に含まれません。</p>
-      </div>}
+      </div>)}
       {sheet === 'help' && <EditorHelp />}
     </BottomSheet>
   </div>;

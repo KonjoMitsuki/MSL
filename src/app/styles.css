@@ -130,6 +130,10 @@ input[type=color]::-moz-color-swatch { border: 1px solid #ffffff66; border-radiu
 .export-options small { display: block; color: var(--muted); font-size: 12px; font-weight: 400; margin-top: 8px; }
 .export-options .setting-hint { margin-top: 16px; }
 .export-feedback { min-height: 22px; margin: 0; color: var(--accent); font-size: 13px; }
+.photo-export { display: grid; gap: 12px; }
+.photo-export h3, .photo-export p { margin: 0; }
+.photo-export-preview { display: block; width: 100%; height: auto; max-height: 40dvh; object-fit: contain; -webkit-touch-callout: default; -webkit-user-select: auto; user-select: auto; }
+.photo-export-size { color: var(--muted); font-size: 12px; text-align: center; }
 .editor-help { font-size: 13px; line-height: 1.9; }
 .editor-help dt { color: var(--accent); margin-top: 20px; font-weight: 700; }
 .editor-help dd { margin: 6px 0 0; color: #d4dfe9; }
@@ -152,7 +156,7 @@ input[type=color]::-moz-color-swatch { border: 1px solid #ffffff66; border-radiu
 .crop-field input { width: 72px; min-height: 44px; padding: 6px; font-size: 16px; }
 .crop-field em { font-style: normal; }
 .crop-output { width: 100%; font-size: 12px; color: var(--accent); }
-.crop-actions { display: flex; gap: 8px; }
+.crop-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .crop-actions button { font-size: 12px; }
 @keyframes sheet-in { from { transform: translateY(20px); opacity: .4; } to { transform: translateY(0); opacity: 1; } }
 @media (min-width: 760px) {

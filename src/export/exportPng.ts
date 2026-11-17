@@ -65,11 +65,26 @@ export async function exportCropPng(
   return encode(out);
 }
 
+function pngFilename(prefix: string) {
+  return `${prefix}-${new Date().toISOString().replaceAll(':', '-')}.png`;
+}
+
+export function createPngFile(blob: Blob, prefix = 'marbling'): File {
+  return new File([blob], pngFilename(prefix), { type: 'image/png' });
+}
+
+export function canSharePng(file: File): boolean {
+  try {
+    return typeof navigator.share === 'function' && typeof navigator.canShare === 'function'
+      && navigator.canShare({ files: [file] });
+  } catch { return false; }
+}
+
 export function downloadPng(blob: Blob, prefix = 'marbling') {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = `${prefix}-${new Date().toISOString().replaceAll(':', '-')}.png`;
+  anchor.download = blob instanceof File ? blob.name : pngFilename(prefix);
   anchor.click();
   // Retain long enough for mobile browsers to consume the download.
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
